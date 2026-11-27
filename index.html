@@ -1,17 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
 
     <meta charset="UTF-8">
 
     <meta name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover">
+          content="width=device-width,
+                   initial-scale=1,
+                   viewport-fit=cover">
 
-    <meta name="theme-color"
-          content="#0f1217">
+    <meta name="theme-color" content="#0f1217">
 
-    <title>Aether.</title>
+    <meta name="apple-mobile-web-app-capable"
+          content="yes">
+
+    <meta name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent">
+
+    <meta name="description"
+          content="Aether — A personal worldbuilding archive.">
+
+    <title>Aether — Worldbuilding</title>
 
     <link rel="preconnect"
           href="https://fonts.googleapis.com">
@@ -20,104 +29,71 @@
           href="https://fonts.gstatic.com"
           crossorigin>
 
-    <link rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500;600;700&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Jost:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Cinzel:wght@400;500;600;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&family=Great+Vibes&family=JetBrains+Mono:wght@400;500;700&display=swap"
+          rel="stylesheet">
 
-    <link rel="stylesheet"
-          href="./style.css?v=2.1.1">
-
-    <script>
-
-        window.addEventListener("error", event => {
-
-            const loading = document.getElementById(
-                "startup-message"
-            );
-
-            if (!loading) return;
-
-            loading.textContent =
-                "Unable to open Aether: " +
-                (
-                    event.message ||
-                    "A required file could not be loaded."
-                );
-
-        }, true);
-
-        window.addEventListener(
-            "unhandledrejection",
-            event => {
-
-                const loading = document.getElementById(
-                    "startup-message"
-                );
-
-                if (!loading) return;
-
-                loading.textContent =
-                    "Unable to open Aether: " +
-                    (
-                        event.reason?.message ||
-                        String(event.reason)
-                    );
-
-            }
-        );
-
-    </script>
-
-    <script defer src="./data.js?v=2.1.1"></script>
-
-    <script defer src="./app.js?v=2.1.1"></script>
+    <link rel="stylesheet" href="style.css">
 
 </head>
 
 <body>
 
-    <div id="app">
+    <!-- APPLICATION -->
 
-        <div style="
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 30px;
-            text-align: center;
-        ">
+    <main id="app" aria-label="Aether Worldbuilding">
 
-            <span style="
-                color: #e6bd8b;
-                font-size: 32px;
-            ">
-                ◇
-            </span>
+        <div id="aether-menu-root"></div>
 
-            <p id="startup-message"
-               role="status"
-               style="
-                   color: #7baaab;
-                   font-size: 13px;
-                   line-height: 1.6;
-               ">
-                Opening the archive...
-            </p>
+        <div id="aether-page-root" hidden></div>
 
-        </div>
+    </main>
 
-    </div>
+
+    <!-- NOTIFICATIONS -->
 
     <div id="notification-root"
          role="status"
          aria-live="polite">
     </div>
 
-    <input type="file"
-           id="backup-input"
+
+    <!-- DIALOGS -->
+
+    <dialog id="aether-dialog"
+            class="archive-dialog">
+    </dialog>
+
+
+    <!-- FILE INPUTS -->
+
+    <input id="backup-input"
+           type="file"
            accept=".json,application/json"
            hidden>
 
-</body>
+    <input id="image-input"
+           type="file"
+           accept="image/*"
+           hidden>
 
+
+    <!-- JAVASCRIPT REQUIRED -->
+
+    <noscript>
+
+        <div style="padding:24px;color:#e6bd8b">
+
+            Aether requires JavaScript to open your world.
+
+        </div>
+
+    </noscript>
+
+
+    <!-- APPLICATION MODULES -->
+
+    <script src="data.js" defer></script>
+    <script src="app.js" defer></script>
+
+</body>
 </html>
