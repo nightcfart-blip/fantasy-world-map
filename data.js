@@ -1,7 +1,8 @@
-/* ==================================================
-   AETHER — V2.1
-   CONSOLIDATED DATA FOUNDATION
-   ================================================== */
+
+/* =========================================================
+   AETHER — V2.2
+   CONSOLIDATED DATA & STORAGE FOUNDATION
+   ========================================================= */
 
 (() => {
 
@@ -9,50 +10,49 @@
 
     const A = window.Aether = window.Aether || {};
 
+    const VERSION = 2;
+    const LEGACY_KEY = "aether-worldbuilding";
+    const DB_NAME = "aether-worldbuilding";
+    const STORE = "worlds";
+    const MAIN = "main";
+    const RECOVERY = "recovery";
+
     const extensions = new Map();
     const migrations = new Map();
-    const validators = new Map();
     const normalizers = new Map();
+    const validators = new Map();
 
-    const archiveMigrations = new Map();
+    const now = () => new Date().toISOString();
+    const uid = () => crypto.randomUUID();
+    const clone = value => structuredClone(value);
 
-    const MODULE = "archive";
+    const object = value =>
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value);
 
-    const BLOCK_TYPES = [
-        "heading",
-        "subheading",
-        "text",
-        "information",
-        "quote",
-        "divider"
-    ];
+    const array = value =>
+        Array.isArray(value) ? value : [];
 
-    const SORT_TYPES = [
-        "alphabetical",
-        "created",
-        "edited"
-    ];
+    const string = (value, fallback = "") =>
+        typeof value === "string" ? value : fallback;
 
-    const blockTypeSet = new Set(BLOCK_TYPES);
-    const sortTypeSet = new Set(SORT_TYPES);
+    const date = value =>
+        Number.isFinite(Date.parse(value)) ? value : now();
 
-    const collator = new Intl.Collator(undefined, {
-        sensitivity: "base",
-        numeric: true
-    });
+    const fail = message => {
+        throw new Error(message);
+    };
 
-
-    /* ==================================================
+    /* =====================================================
        01 — APPLICATION CONFIGURATION
-       ================================================== */
+       ===================================================== */
 
     A.config = {
         name: "Aether",
-        version: "2.1",
-        schemaVersion: 1,
-
-        storageKey: "aether-worldbuilding",
-
+        version: "2.2",
+        schemaVersion: VERSION,
+        storageKey: LEGACY_KEY,
         subtitle: "A world in the making",
         footer: "Every world begins somewhere",
         edition: "Vol. I"
@@ -70,11 +70,6 @@
         paleAqua: "#b9d7d3"
     };
 
-
-    /* ==================================================
-       02 — MAIN MENU
-       ================================================== */
-
     A.menu = [
         {
             id: "archive",
@@ -82,10 +77,9 @@
             category: "The Compendium",
             title: "World",
             italicTitle: "Archive.",
-            description:
-                "The fragments of an unwritten universe.",
+            description: "The fragments of an unwritten universe.",
             className: "panel-hero",
-            enabled: false
+            enabled: true
         },
         {
             id: "collections",
@@ -94,7 +88,7 @@
             title: "Collections",
             description: "Gather the fragments.",
             className: "panel-collections",
-            enabled: false
+            enabled: true
         },
         {
             id: "export",
@@ -103,7 +97,7 @@
             title: "Preserve",
             description: "Keep what was created.",
             className: "panel-export",
-            enabled: false
+            enabled: true
         },
         {
             id: "import",
@@ -112,7 +106,7 @@
             title: "Restore",
             description: "Return to your world.",
             className: "panel-import",
-            enabled: false
+            enabled: true
         },
         {
             id: "settings",
@@ -121,154 +115,157 @@
             title: "Settings",
             description: "Make it your own.",
             className: "panel-settings",
-            enabled: false
+            enabled: true
         }
     ];
 
+    /* =====================================================
+       02 — DEFAULT APPEARANCE
+       ===================================================== */
 
-    /* ==================================================
-       03 — SHARED UTILITIES
-       ================================================== */
+    const DEFAULT_APPEARANCE = {
+        font: "modern",
+        textColor: "#d0dedc",
+        accent: "#e6bd8b",
 
-    const isObject = value =>
-        value !== null &&
-        typeof value === "object" &&
-        !Array.isArray(value);
+        background: "",
+        backgroundImage: "",
 
-    const has = (object, key) =>
-        Object.prototype.hasOwnProperty.call(
-            object,
-            key
-        );
+        banner: "",
+        bannerHeight: 220,
+        bannerFade: 70,
 
-    const fail = message => {
-        throw new Error(message);
+        titleFont: "editorial",
+        titleSize: 48,
+        titleWeight: 400,
+        titleAlign: "left",
+        titleColor: "#e6bd8b",
+
+        subtitleFont: "editorial",
+        subtitleSize: 22,
+        subtitleColor: "#7baaab",
+
+        width: "normal",
+        divider: "ornamental",
+
+        showDates: false,
+        showBreadcrumb: true,
+        showBacklinks: true
     };
 
-    const now = () =>
-        new Date().toISOString();
-
-    const uid = () => {
-
-        if (globalThis.crypto?.randomUUID) {
-            return globalThis.crypto.randomUUID();
-        }
-
-        return [
-            Date.now().toString(36),
-            Math.random().toString(36).slice(2),
-            Math.random().toString(36).slice(2)
-        ].join("-");
-
+    const DEFAULT_STYLE = {
+        font: "",
+        size: 0,
+        weight: 0,
+        color: "",
+        highlight: "",
+        align: "",
+        italic: false,
+        underline: false,
+        strike: false,
+        shadow: false,
+        shadowColor: "#000000",
+        shadowBlur: 8,
+        letterSpacing: 0,
+        lineHeight: 1.65,
+        padding: 0,
+        margin: 10,
+        border: false,
+        uppercase: false,
+        smallCaps: false
     };
 
-    const clone = value =>
-        JSON.parse(JSON.stringify(value));
+    const BLOCK_TYPES = [
+        "heading",
+        "subheading",
+        "text",
+        "quote",
+        "bullet",
+        "numbered",
+        "information",
+        "informationGrid",
+        "columns2",
+        "columns3",
+        "table",
+        "divider",
+        "collapse",
+        "spacer",
+        "image",
+        "gallery",
+        "banner",
+        "frame",
+        "callout",
+        "reference",
+        "preview",
+        "related",
+        "subarticles"
+    ];
 
-    const validId = value =>
-        typeof value === "string" &&
-        value.length > 0;
+    const SORT_TYPES = [
+        "original",
+        "alphabetical",
+        "reverse",
+        "created",
+        "edited",
+        "manual"
+    ];
 
-    const validName = value =>
-        typeof value === "string" &&
-        value.trim().length > 0 &&
-        value.length <= 250;
+    /* =====================================================
+       03 — EMPTY DATABASE
+       ===================================================== */
 
-    const validDate = value =>
-        Number.isFinite(Date.parse(value));
+    function createArchive() {
 
-    const cleanName = value => {
+        return {
+            categories: [],
+            articles: [],
+            folders: [],
+            presets: [],
 
-        const name = String(value ?? "").trim();
-
-        if (!validName(name)) {
-            fail(
-                "Enter a name between 1 and 250 characters."
-            );
-        }
-
-        return name;
-
-    };
-
-    const alphabetical = (a, b) =>
-        collator.compare(a.name, b.name);
-
-    const pad = value =>
-        String(value).padStart(2, "0");
-
-    function register(map, key, callback, message) {
-
-        if (
-            typeof key !== "string" ||
-            typeof callback !== "function"
-        ) {
-            fail(message);
-        }
-
-        map.set(key, callback);
+            preferences: {
+                expanded: [],
+                sort: "original",
+                includeDescendants: false
+            }
+        };
 
     }
 
-    function swap(array, a, b) {
+    function createDatabase() {
 
-        if (
-            a < 0 ||
-            b < 0 ||
-            a >= array.length ||
-            b >= array.length
-        ) {
-            return false;
-        }
+        const database = {
+            format: "aether-worldbuilding",
+            schemaVersion: VERSION,
+            appVersion: A.config.version,
 
-        [array[a], array[b]] = [
-            array[b],
-            array[a]
-        ];
+            id: uid(),
 
-        return true;
+            createdAt: now(),
+            updatedAt: now(),
+
+            modules: {
+                archive: createArchive()
+            }
+        };
+
+        initializeModules(database);
+
+        return database;
 
     }
 
-    A.utils = {
-        id: uid,
-        now,
-        clone
-    };
-
-
-    /* ==================================================
-       04 — DATABASE FOUNDATION
-       ================================================== */
+    /* =====================================================
+       04 — EXTENSIBLE MODULE SYSTEM
+       ===================================================== */
 
     function initializeModules(database) {
 
-        for (const [name, factory] of extensions) {
+        for (const [name, definition] of extensions) {
 
-            if (!has(database.modules, name)) {
+            if (database.modules[name] === undefined) {
 
-                Object.defineProperty(
-                    database.modules,
-                    name,
-                    {
-                        value: factory(),
-                        writable: true,
-                        enumerable: true,
-                        configurable: true
-                    }
-                );
-
-            }
-
-        }
-
-        for (const [name, normalize] of normalizers) {
-
-            if (has(database.modules, name)) {
-
-                database.modules[name] = normalize(
-                    database.modules[name]
-                );
+                database.modules[name] =
+                    clone(definition.create());
 
             }
 
@@ -278,139 +275,826 @@
 
     }
 
-    function createDatabase() {
+    function registerExtension(name, definition) {
 
-        const timestamp = now();
+        if (
+            typeof name !== "string" ||
+            !name.trim() ||
+            ["archive", "__proto__", "constructor", "prototype"]
+                .includes(name)
+        ) {
+            fail("Invalid extension name.");
+        }
 
-        return initializeModules({
-            format: "aether-world",
+        const factory =
+            typeof definition === "function"
+                ? definition
+                : definition?.create;
 
-            schemaVersion: A.config.schemaVersion,
-            appVersion: A.config.version,
+        if (typeof factory !== "function") {
+            fail("Extensions require a create function.");
+        }
 
-            metadata: {
-                id: uid(),
-                name: "Untitled World",
-                createdAt: timestamp,
-                updatedAt: timestamp
-            },
-
-            modules: {}
+        extensions.set(name, {
+            ...(object(definition) ? definition : {}),
+            create: factory
         });
+
+    }
+
+    function registerMigration(version, callback) {
+
+        if (!Number.isInteger(version) ||
+            typeof callback !== "function") {
+            fail("Invalid database migration.");
+        }
+
+        migrations.set(version, callback);
+
+    }
+
+    function registerNormalizer(name, callback) {
+
+        if (typeof callback !== "function") {
+            fail("Invalid normalizer.");
+        }
+
+        normalizers.set(name, callback);
+
+    }
+
+    function registerValidator(name, callback) {
+
+        if (typeof callback !== "function") {
+            fail("Invalid validator.");
+        }
+
+        validators.set(name, callback);
+
+    }
+
+    /* =====================================================
+       05 — NORMALIZATION
+       ===================================================== */
+
+    function normalizeCategory(category) {
+
+        if (!object(category)) {
+            fail("Invalid category entry.");
+        }
+
+        return {
+            ...category,
+
+            id: category.id || uid(),
+
+            name: string(
+                category.name,
+                string(category.title)
+            ).trim(),
+
+            parentId: category.parentId || null,
+
+            createdAt: date(category.createdAt),
+
+            updatedAt: date(
+                category.updatedAt || category.createdAt
+            )
+        };
+
+    }
+
+    function normalizeBlock(block) {
+
+        if (!object(block)) {
+            fail("Invalid article content block.");
+        }
+
+        const typeAliases = {
+            paragraph: "text",
+            field: "information"
+        };
+
+        const type =
+            typeAliases[block.type] ||
+            string(block.type, "text");
+
+        const result = {
+            ...block,
+
+            id: block.id || uid(),
+
+            type,
+
+            text: string(
+                block.text,
+                string(block.content, string(block.value))
+            ),
+
+            label: string(
+                block.label,
+                string(block.heading)
+            ),
+
+            rich: object(block.rich)
+                ? clone(block.rich)
+                : {},
+
+            style: object(block.style)
+                ? clone(block.style)
+                : {},
+
+            images: array(block.images).map(image => {
+
+                if (typeof image === "string") {
+                    return {
+                        src: image,
+                        caption: ""
+                    };
+                }
+
+                return {
+                    ...image,
+                    src: string(image?.src),
+                    caption: string(image?.caption)
+                };
+
+            }),
+
+            references: array(block.references).map(ref => {
+
+                if (typeof ref === "string") {
+                    return {
+                        id: ref,
+                        name: "",
+                        mode: "preview"
+                    };
+                }
+
+                return {
+                    ...ref,
+                    id: string(ref?.id),
+                    name: string(ref?.name),
+                    mode: ref?.mode === "direct"
+                        ? "direct"
+                        : "preview"
+                };
+
+            })
+        };
+
+        if (
+            !result.images.length &&
+            typeof block.src === "string" &&
+            block.src
+        ) {
+            result.images.push({
+                src: block.src,
+                caption: string(block.caption)
+            });
+        }
+
+        if (
+            type === "table" ||
+            type === "informationGrid"
+        ) {
+
+            const rows = array(block.rows);
+
+            result.rows = rows.length
+                ? rows.map(row =>
+                    array(row).map(cell =>
+                        String(cell ?? "")
+                    )
+                )
+                : [["", ""], ["", ""]];
+
+            const width = Math.max(
+                1,
+                ...result.rows.map(row => row.length)
+            );
+
+            result.rows.forEach(row => {
+
+                while (row.length < width) {
+                    row.push("");
+                }
+
+            });
+
+        }
+
+        if (
+            type === "columns2" ||
+            type === "columns3"
+        ) {
+
+            const count = type === "columns2" ? 2 : 3;
+
+            result.columns = Array.from(
+                {length: count},
+                (_, i) => string(block.columns?.[i])
+            );
+
+            result.columns.forEach((value, i) => {
+
+                const key = "column" + i;
+
+                if (result[key] === undefined) {
+                    result[key] = value;
+                }
+
+            });
+
+        }
+
+        if (type === "divider") {
+            result.variant = block.variant || "ornamental";
+        }
+
+        if (type === "spacer") {
+
+            result.height = Number.isFinite(Number(block.height))
+                ? Number(block.height)
+                : 24;
+
+        }
+
+        return result;
+
+    }
+
+    function normalizeAppearance(value, article = {}) {
+
+        const appearance = {
+            ...DEFAULT_APPEARANCE,
+            ...(object(value) ? value : {})
+        };
+
+        if (!appearance.banner && typeof article.banner === "string") {
+            appearance.banner = article.banner;
+        }
+
+        return appearance;
+
+    }
+
+    function normalizeArticle(article, index) {
+
+        if (!object(article)) {
+            fail("Invalid article entry.");
+        }
+
+        return {
+            ...article,
+
+            id: article.id || uid(),
+
+            name: string(
+                article.name,
+                string(article.title)
+            ).trim(),
+
+            subtitle: string(article.subtitle),
+
+            categoryId: article.categoryId || null,
+
+            parentArticleId: article.parentArticleId || null,
+
+            folderId: article.folderId || null,
+
+            order: Number.isFinite(Number(article.order))
+                && article.order != null
+                ? Number(article.order)
+                : index,
+
+            blocks: array(article.blocks)
+                .map(normalizeBlock),
+
+            appearance: normalizeAppearance(
+                article.appearance,
+                article
+            ),
+
+            createdAt: date(article.createdAt),
+
+            updatedAt: date(
+                article.updatedAt || article.createdAt
+            )
+        };
+
+    }
+
+    function normalizeFolder(folder) {
+
+        if (!object(folder)) {
+            fail("Invalid article folder.");
+        }
+
+        return {
+            ...folder,
+
+            id: folder.id || uid(),
+
+            name: string(folder.name).trim(),
+
+            parentArticleId: folder.parentArticleId || null,
+
+            createdAt: date(folder.createdAt),
+
+            updatedAt: date(
+                folder.updatedAt || folder.createdAt
+            )
+        };
+
+    }
+
+    function normalizePreset(preset) {
+
+        if (!object(preset)) {
+            fail("Invalid appearance preset.");
+        }
+
+        return {
+            ...preset,
+
+            id: preset.id || uid(),
+
+            name: string(preset.name).trim(),
+
+            appearance: normalizeAppearance(
+                preset.appearance
+            ),
+
+            createdAt: date(preset.createdAt)
+        };
+
+    }
+
+    function normalizeArchive(archive) {
+
+        if (!object(archive)) {
+            fail("Invalid archive module.");
+        }
+
+        const preferences = object(archive.preferences)
+            ? archive.preferences
+            : {};
+
+        return {
+            ...archive,
+
+            categories: array(archive.categories)
+                .map(normalizeCategory),
+
+            articles: array(archive.articles)
+                .map(normalizeArticle),
+
+            folders: array(archive.folders)
+                .map(normalizeFolder),
+
+            presets: array(archive.presets)
+                .map(normalizePreset),
+
+            preferences: {
+                ...preferences,
+
+                expanded: [
+                    ...new Set(
+                        array(preferences.expanded)
+                    )
+                ],
+
+                sort: SORT_TYPES.includes(preferences.sort)
+                    ? preferences.sort
+                    : "original",
+
+                includeDescendants:
+                    Boolean(preferences.includeDescendants)
+            }
+        };
+
+    }
+
+    /* =====================================================
+       06 — VERSION MIGRATION
+       ===================================================== */
+
+    registerMigration(2, database => {
+
+        database.modules.archive =
+            normalizeArchive(database.modules.archive);
+
+        database.modules.archive.preferences.sort =
+            "original";
+
+        database.schemaVersion = 2;
+
+        return database;
+
+    });
+
+    function unwrapBackup(input) {
+
+        if (!object(input)) {
+            fail("The backup is not a valid database.");
+        }
+
+        if (object(input.database)) {
+            return input.database;
+        }
+
+        if (object(input.data?.modules)) {
+            return input.data;
+        }
+
+        if (object(input.world?.modules)) {
+            return input.world;
+        }
+
+        return input;
 
     }
 
     function normalizeDatabase(input) {
 
-        if (
-            !isObject(input) ||
-            input.format !== "aether-world"
-        ) {
-            fail("Unrecognized Aether database.");
+        const source = clone(unwrapBackup(input));
+
+        if (!object(source.modules)) {
+
+            if (
+                Array.isArray(source.categories) &&
+                Array.isArray(source.articles)
+            ) {
+
+                source.modules = {
+                    archive: {
+                        categories: source.categories,
+                        articles: source.articles,
+                        folders: source.folders || [],
+                        presets: source.presets || [],
+                        preferences: source.preferences || {}
+                    }
+                };
+
+            } else {
+
+                fail("This file does not contain an Aether archive.");
+
+            }
+
         }
 
-        if (
-            !Number.isInteger(input.schemaVersion) ||
-            input.schemaVersion < 1
-        ) {
-            fail("Invalid schema version.");
+        if (!object(source.modules.archive)) {
+            fail("The archive module is missing.");
         }
 
-        if (
-            input.schemaVersion >
-            A.config.schemaVersion
-        ) {
+        const version = Number(
+            source.schemaVersion ??
+            source.meta?.schemaVersion ??
+            1
+        );
+
+        if (!Number.isInteger(version) || version < 1) {
+            fail("Invalid backup version.");
+        }
+
+        if (version > VERSION) {
+
             fail(
-                "This database requires a newer version."
+                "This backup was created by a newer version of Aether."
             );
+
         }
 
-        let database = clone(input);
+        let database = {
+            ...source,
 
-        while (
-            database.schemaVersion <
-            A.config.schemaVersion
-        ) {
+            schemaVersion: version,
 
-            const version = database.schemaVersion;
-            const migrate = migrations.get(version);
+            id: source.id || source.worldId || uid(),
+
+            createdAt: date(source.createdAt),
+
+            updatedAt: date(
+                source.updatedAt || source.createdAt
+            )
+        };
+
+        while (database.schemaVersion < VERSION) {
+
+            const next = database.schemaVersion + 1;
+            const migrate = migrations.get(next);
 
             if (!migrate) {
-                fail("Missing database migration.");
+                fail("Missing migration for version " + next);
             }
 
-            database = migrate(database);
-
-            if (!isObject(database)) {
-                fail("Invalid database migration.");
-            }
-
-            database.schemaVersion = version + 1;
+            database = migrate(database) || database;
+            database.schemaVersion = next;
 
         }
 
-        if (!isObject(database.modules)) {
-            fail("Invalid database modules.");
+        database.format = "aether-worldbuilding";
+        database.appVersion = A.config.version;
+
+        database.modules.archive =
+            normalizeArchive(database.modules.archive);
+
+        initializeModules(database);
+
+        for (const [name, definition] of extensions) {
+
+            if (typeof definition.normalize === "function") {
+
+                database.modules[name] =
+                    definition.normalize(
+                        database.modules[name],
+                        database
+                    ) ?? database.modules[name];
+
+            }
+
         }
 
-        return initializeModules(database);
+        for (const callback of normalizers.values()) {
+            callback(database);
+        }
+
+        return database;
 
     }
 
-    function validateDatabase(database) {
+    /* =====================================================
+       07 — DATABASE VALIDATION
+       ===================================================== */
 
-        if (!isObject(database)) {
-            fail("The database is invalid.");
-        }
-
-        if (database.format !== "aether-world") {
-            fail("This is not an Aether database.");
-        }
+    function validateId(id, label) {
 
         if (
-            !Number.isInteger(database.schemaVersion) ||
-            database.schemaVersion < 1
+            typeof id !== "string" ||
+            !/^[a-zA-Z0-9_-]+$/.test(id)
         ) {
-            fail("Invalid database schema.");
+            fail("Invalid " + label + " ID.");
         }
 
-        if (!isObject(database.metadata)) {
-            fail("Database metadata is missing.");
-        }
+    }
+
+    function validateName(name, label) {
 
         if (
-            !validId(database.metadata.id) ||
-            !database.metadata.id.trim()
+            typeof name !== "string" ||
+            !name.trim() ||
+            name.length > 250
         ) {
-            fail("The world identifier is missing.");
+            fail("Invalid " + label + " name.");
         }
 
-        if (
-            typeof database.metadata.name !== "string"
-        ) {
-            fail("The world name is invalid.");
+    }
+
+    function indexItems(items, label) {
+
+        const index = new Map();
+
+        for (const item of items) {
+
+            validateId(item.id, label);
+
+            if (index.has(item.id)) {
+                fail("Duplicate " + label + " ID: " + item.id);
+            }
+
+            index.set(item.id, item);
+
         }
 
-        if (!isObject(database.modules)) {
-            fail("Database modules are invalid.");
+        return index;
+
+    }
+
+    function validateHierarchy(items, parentKey, label) {
+
+        const completed = new Set();
+
+        for (const item of items.values()) {
+
+            const path = new Set();
+
+            let current = item;
+
+            while (current) {
+
+                if (completed.has(current.id)) break;
+
+                if (path.has(current.id)) {
+
+                    fail(
+                        "Circular " + label +
+                        " relationship detected."
+                    );
+
+                }
+
+                path.add(current.id);
+
+                const parentId = current[parentKey];
+
+                if (!parentId) break;
+
+                current = items.get(parentId);
+
+                if (!current) {
+                    fail("Missing parent " + label + ".");
+                }
+
+            }
+
+            path.forEach(id => completed.add(id));
+
+        }
+
+    }
+
+    function validateBlocks(blocks) {
+
+        if (!Array.isArray(blocks)) {
+            fail("Invalid article content.");
+        }
+
+        indexItems(blocks, "block");
+
+        for (const block of blocks) {
+
+            if (
+                typeof block.type !== "string" ||
+                !block.type.trim()
+            ) {
+                fail("Invalid block type.");
+            }
+
+            if (!object(block.rich)) {
+                fail("Invalid rich text content.");
+            }
+
+            for (const value of Object.values(block.rich)) {
+
+                if (typeof value !== "string") {
+                    fail("Invalid formatted text.");
+                }
+
+            }
+
+            if (!object(block.style)) {
+                fail("Invalid block appearance.");
+            }
+
+        }
+
+    }
+
+    function validateArchive(archive) {
+
+        const categories =
+            indexItems(archive.categories, "category");
+
+        const articles =
+            indexItems(archive.articles, "article");
+
+        const folders =
+            indexItems(archive.folders, "folder");
+
+        indexItems(archive.presets, "preset");
+
+        for (const category of categories.values()) {
+
+            validateName(category.name, "category");
+
+            if (
+                category.parentId &&
+                !categories.has(category.parentId)
+            ) {
+                fail("A category has a missing parent.");
+            }
+
+        }
+
+        validateHierarchy(
+            categories,
+            "parentId",
+            "category"
+        );
+
+        for (const article of articles.values()) {
+
+            validateName(article.name, "article");
+
+            if (!categories.has(article.categoryId)) {
+                fail("An article has a missing category.");
+            }
+
+            if (article.parentArticleId) {
+
+                const parent =
+                    articles.get(article.parentArticleId);
+
+                if (!parent) {
+                    fail("A subarticle has a missing parent.");
+                }
+
+                if (parent.categoryId !== article.categoryId) {
+
+                    fail(
+                        "Subarticles must belong to their parent's category."
+                    );
+
+                }
+
+            }
+
+            if (article.folderId) {
+
+                const folder = folders.get(article.folderId);
+
+                if (!folder) {
+                    fail("An article has a missing folder.");
+                }
+
+                if (
+                    folder.parentArticleId !==
+                    article.parentArticleId
+                ) {
+                    fail("Invalid article folder relationship.");
+                }
+
+            }
+
+            validateBlocks(article.blocks);
+
+        }
+
+        validateHierarchy(
+            articles,
+            "parentArticleId",
+            "article"
+        );
+
+        for (const folder of folders.values()) {
+
+            validateName(folder.name, "folder");
+
+            if (!articles.has(folder.parentArticleId)) {
+                fail("A folder has a missing parent article.");
+            }
+
+        }
+
+        for (const preset of archive.presets) {
+
+            validateName(preset.name, "preset");
+
         }
 
         return true;
 
     }
 
-    function validateModules(database) {
+    function validateDatabase(database) {
 
-        for (const [name, validate] of validators) {
+        if (!object(database)) {
+            fail("Invalid database.");
+        }
 
-            if (
-                has(database.modules, name) &&
-                validate(
+        if (database.schemaVersion !== VERSION) {
+            fail("Unsupported database version.");
+        }
+
+        if (!object(database.modules)) {
+            fail("Database modules are missing.");
+        }
+
+        validateArchive(database.modules.archive);
+
+        for (const [name, definition] of extensions) {
+
+            if (typeof definition.validate === "function") {
+
+                const result = definition.validate(
                     database.modules[name],
                     database
-                ) === false
-            ) {
-                fail("Invalid module: " + name);
+                );
+
+                if (result === false) {
+                    fail("Invalid module: " + name);
+                }
+
+            }
+
+        }
+
+        for (const [name, callback] of validators) {
+
+            if (callback(database) === false) {
+                fail("Validation failed: " + name);
             }
 
         }
@@ -421,717 +1105,498 @@
 
     function prepareDatabase(input) {
 
-        const database = A.data.normalize(input);
+        const database = normalizeDatabase(input);
 
-        A.data.validate(database);
-        A.data.validateModules(database);
+        validateDatabase(database);
 
         return database;
 
     }
 
+    /* =====================================================
+       08 — INDEXEDDB CONNECTION
+       ===================================================== */
 
-    /* ==================================================
-       05 — PUBLIC DATABASE API
-       ================================================== */
+    let connectionPromise = null;
 
-    A.data = {
+    function connect() {
 
-        create: createDatabase,
+        if (connectionPromise) {
+            return connectionPromise;
+        }
 
-        normalize: normalizeDatabase,
+        connectionPromise = new Promise((resolve, reject) => {
 
-        validate: validateDatabase,
+            if (!window.indexedDB) {
 
-        validateModules,
+                reject(
+                    new Error("IndexedDB is unavailable.")
+                );
 
-        prepare: prepareDatabase,
+                return;
 
-        registerExtension(name, factory) {
-
-            register(
-                extensions,
-                name,
-                factory,
-                "Invalid data extension."
-            );
-
-        },
-
-        registerValidator(name, validator) {
-
-            register(
-                validators,
-                name,
-                validator,
-                "Invalid module validator."
-            );
-
-        },
-
-        registerNormalizer(name, normalizer) {
-
-            register(
-                normalizers,
-                name,
-                normalizer,
-                "Invalid module normalizer."
-            );
-
-        },
-
-        registerMigration(version, migrate) {
-
-            if (
-                !Number.isInteger(version) ||
-                typeof migrate !== "function"
-            ) {
-                fail("Invalid migration.");
             }
 
-            migrations.set(version, migrate);
+            const request = indexedDB.open(DB_NAME, 1);
 
-        },
+            request.onupgradeneeded = () => {
 
+                const db = request.result;
 
-        /* JSON EXPORT */
+                if (!db.objectStoreNames.contains(STORE)) {
+                    db.createObjectStore(STORE);
+                }
 
-        serialize(database) {
+            };
 
-            const prepared = A.data.prepare(database);
+            request.onsuccess = () => {
 
-            prepared.appVersion = A.config.version;
-            prepared.exportedAt = now();
+                const db = request.result;
 
-            return JSON.stringify(
-                prepared,
-                null,
-                2
+                db.onversionchange = () => {
+                    db.close();
+                    connectionPromise = null;
+                };
+
+                resolve(db);
+
+            };
+
+            request.onerror = () => {
+
+                reject(
+                    request.error ||
+                    new Error("Storage could not be opened.")
+                );
+
+            };
+
+            request.onblocked = () => {
+
+                reject(
+                    new Error(
+                        "Storage is blocked by another open Aether tab."
+                    )
+                );
+
+            };
+
+        }).catch(error => {
+
+            connectionPromise = null;
+            throw error;
+
+        });
+
+        return connectionPromise;
+
+    }
+
+    async function readRecord(key) {
+
+        const db = await connect();
+
+        return new Promise((resolve, reject) => {
+
+            const transaction = db.transaction(
+                STORE,
+                "readonly"
             );
 
-        },
+            const request =
+                transaction.objectStore(STORE).get(key);
 
+            let result = null;
 
-        /* JSON IMPORT */
+            request.onsuccess = () => {
+                result = request.result ?? null;
+            };
 
-        deserialize(text) {
+            transaction.oncomplete = () => resolve(result);
 
-            if (
-                typeof text !== "string" ||
-                !text.trim()
-            ) {
-                fail("The selected file is empty.");
-            }
+            transaction.onerror = () =>
+                reject(transaction.error);
+
+            transaction.onabort = () =>
+                reject(
+                    transaction.error ||
+                    new Error("Storage read aborted.")
+                );
+
+        });
+
+    }
+
+    async function writeRecord(key, value) {
+
+        const db = await connect();
+
+        return new Promise((resolve, reject) => {
+
+            const transaction = db.transaction(
+                STORE,
+                "readwrite"
+            );
+
+            transaction.objectStore(STORE).put(
+                value,
+                key
+            );
+
+            transaction.oncomplete = () => resolve(value);
+
+            transaction.onerror = () => {
+
+                reject(
+                    transaction.error ||
+                    new Error("Storage write failed.")
+                );
+
+            };
+
+            transaction.onabort = () => {
+
+                reject(
+                    transaction.error ||
+                    new Error("Storage write aborted.")
+                );
+
+            };
+
+        });
+
+    }
+
+    /* =====================================================
+       09 — PERSISTENCE & LEGACY MIGRATION
+       ===================================================== */
+
+    function readLegacy() {
+
+        return localStorage.getItem(LEGACY_KEY);
+
+    }
+
+    async function load() {
+
+        const existing = await readRecord(MAIN);
+
+        if (existing !== null) {
+
+            return prepareDatabase(existing);
+
+        }
+
+        const legacy = readLegacy();
+
+        if (legacy !== null) {
 
             let parsed;
 
             try {
 
-                parsed = JSON.parse(
-                    text.replace(/^\uFEFF/, "")
-                );
+                parsed = JSON.parse(legacy);
 
             } catch {
 
                 fail(
-                    "The selected file is not valid JSON."
+                    "The existing world could not be read. " +
+                    "Your original data has been retained."
                 );
 
             }
 
-            return A.data.prepare(parsed);
+            const prepared = prepareDatabase(parsed);
 
-        },
+            // Preserve the original before migration.
 
+            await writeRecord(RECOVERY, parsed);
 
-        /* BACKUP FILE NAME */
+            await writeRecord(MAIN, prepared);
 
-        backupFilename(database) {
-
-            const name = (
-                database.metadata.name ||
-                "Untitled World"
-            )
-                .trim()
-                .replace(
-                    /[<>:"/\\|?*\u0000-\u001F]/g,
-                    "-"
-                )
-                .replace(/\s+/g, "-")
-                .slice(0, 70)
-                || "Untitled-World";
-
-            const date = new Date();
-
-            const day = [
-                date.getFullYear(),
-                pad(date.getMonth() + 1),
-                pad(date.getDate())
-            ].join("-");
-
-            const time = [
-                pad(date.getHours()),
-                pad(date.getMinutes()),
-                pad(date.getSeconds())
-            ].join("-");
-
-            return `Aether-${name}-${day}_${time}.json`;
-
-        }
-
-    };
-
-
-    /* ==================================================
-       06 — DATABASE PERSISTENCE
-       ================================================== */
-
-    const STORAGE_KEY = A.config.storageKey;
-
-    const RECOVERY_KEY =
-        STORAGE_KEY + "-recovery";
-
-    const exists = key =>
-        localStorage.getItem(key) !== null;
-
-    function loadDatabase(key, errorMessage) {
-
-        const raw = localStorage.getItem(key);
-
-        if (raw === null) {
-            return null;
-        }
-
-        let parsed;
-
-        try {
-
-            parsed = JSON.parse(raw);
-
-        } catch {
-
-            fail(errorMessage);
-
-        }
-
-        return A.data.prepare(parsed);
-
-    }
-
-    A.storage = {
-
-        exists() {
-            return exists(STORAGE_KEY);
-        },
-
-        load() {
-
-            return loadDatabase(
-                STORAGE_KEY,
-                "The locally saved database could not be read."
-            );
-
-        },
-
-        save(database) {
-
-            const prepared = A.data.prepare(database);
-
-            prepared.appVersion = A.config.version;
-            prepared.metadata.updatedAt = now();
-
-            /*
-               Persistence remains transactional.
-
-               The application receives the replacement
-               database only after localStorage succeeds.
-            */
-
-            localStorage.setItem(
-                STORAGE_KEY,
-                JSON.stringify(prepared)
-            );
+            // The original localStorage entry is deliberately
+            // retained as an additional migration safeguard.
 
             return prepared;
 
-        },
-
-        createRecovery(database) {
-
-            if (!database) {
-                return false;
-            }
-
-            localStorage.setItem(
-                RECOVERY_KEY,
-                JSON.stringify(database)
-            );
-
-            return true;
-
-        },
-
-        loadRecovery() {
-
-            return loadDatabase(
-                RECOVERY_KEY,
-                "The recovery database could not be read."
-            );
-
-        },
-
-        hasRecovery() {
-            return exists(RECOVERY_KEY);
         }
 
-    };
-
-
-    /* ==================================================
-       07 — ARCHIVE DEFAULTS
-       ================================================== */
-
-    function createArchive() {
-
-        return {
-            version: 1,
-
-            categories: [],
-            articles: [],
-
-            preferences: {
-                sort: "alphabetical",
-                expanded: []
-            }
-        };
+        return null;
 
     }
 
-    function normalizeArchive(archive) {
+    async function save(database) {
 
-        if (archive === undefined) {
-            return createArchive();
-        }
+        const prepared = prepareDatabase(database);
 
-        if (!isObject(archive)) {
-            fail("The Archive module is invalid.");
-        }
+        prepared.updatedAt = now();
 
-        /*
-           The complete database has already been cloned.
+        await writeRecord(MAIN, prepared);
 
-           No additional Archive clone is necessary.
-        */
-
-        archive.version ??= 1;
-
-        if (
-            !Number.isInteger(archive.version) ||
-            archive.version < 1 ||
-            archive.version > 1
-        ) {
-            fail("Unsupported Archive version.");
-        }
-
-        while (
-            archiveMigrations.has(archive.version)
-        ) {
-
-            const version = archive.version;
-
-            archiveMigrations.get(version)(archive);
-
-            if (
-                !Number.isInteger(archive.version) ||
-                archive.version <= version
-            ) {
-                fail(
-                    "Archive migration did not advance."
-                );
-            }
-
-        }
-
-        if (archive.preferences === undefined) {
-            archive.preferences = {};
-        }
-
-        if (!isObject(archive.preferences)) {
-            fail("Invalid Archive preferences.");
-        }
-
-        archive.preferences.sort ??= "alphabetical";
-        archive.preferences.expanded ??= [];
-
-        return archive;
+        return clone(prepared);
 
     }
 
+    async function createRecovery(database) {
 
-    /* ==================================================
-       08 — ARCHIVE INDEXING
-       ================================================== */
+        if (!database) {
+            fail("No world available for recovery.");
+        }
 
-    /*
-       Indexes are generated from the current data.
-
-       They are not stored in JSON backups and cannot
-       become stale across database replacements.
-    */
-
-    function indexById(items) {
-
-        return new Map(
-            items.map(item => [item.id, item])
+        await writeRecord(
+            RECOVERY,
+            clone(database)
         );
-
-    }
-
-    function groupBy(items, key) {
-
-        const groups = new Map();
-
-        for (const item of items) {
-
-            const value = item[key];
-
-            let group = groups.get(value);
-
-            if (!group) {
-
-                group = [];
-
-                groups.set(value, group);
-
-            }
-
-            group.push(item);
-
-        }
-
-        return groups;
-
-    }
-
-    function createArchiveIndex(archive) {
-
-        return {
-            categories: indexById(
-                archive.categories
-            ),
-
-            articles: indexById(
-                archive.articles
-            ),
-
-            children: groupBy(
-                archive.categories,
-                "parentId"
-            ),
-
-            articlesByCategory: groupBy(
-                archive.articles,
-                "categoryId"
-            ),
-
-            expanded: new Set(
-                archive.preferences.expanded
-            )
-        };
-
-    }
-
-
-    /* ==================================================
-       09 — ARCHIVE VALIDATION
-       ================================================== */
-
-    function validateCategoryHierarchy(categoryMap) {
-
-        /*
-           Each category is resolved once.
-
-           Shared ancestor chains are not repeatedly
-           traversed for every individual category.
-        */
-
-        const resolved = new Set();
-
-        for (const category of categoryMap.values()) {
-
-            if (resolved.has(category.id)) {
-                continue;
-            }
-
-            const visited = new Set();
-
-            let current = category.id;
-
-            while (
-                current !== null &&
-                !resolved.has(current)
-            ) {
-
-                if (
-                    visited.has(current) ||
-                    !categoryMap.has(current)
-                ) {
-                    fail("Invalid category hierarchy.");
-                }
-
-                visited.add(current);
-
-                current = categoryMap.get(
-                    current
-                ).parentId;
-
-            }
-
-            for (const id of visited) {
-                resolved.add(id);
-            }
-
-        }
-
-    }
-
-    function validateBlocks(blocks) {
-
-        const ids = new Set();
-
-        for (const block of blocks) {
-
-            if (
-                !isObject(block) ||
-                !validId(block.id) ||
-                ids.has(block.id) ||
-                !blockTypeSet.has(block.type) ||
-                typeof block.text !== "string" ||
-                typeof block.label !== "string"
-            ) {
-                fail("Invalid article content block.");
-            }
-
-            ids.add(block.id);
-
-        }
-
-    }
-
-    function validateArchive(archive) {
-
-        if (
-            !isObject(archive) ||
-            archive.version !== 1 ||
-            !Array.isArray(archive.categories) ||
-            !Array.isArray(archive.articles)
-        ) {
-            fail("Invalid Archive structure.");
-        }
-
-
-        /* Categories */
-
-        const categoryMap = new Map();
-
-        for (const category of archive.categories) {
-
-            if (
-                !isObject(category) ||
-                !validId(category.id) ||
-                categoryMap.has(category.id) ||
-                !validName(category.name) ||
-                (
-                    category.parentId !== null &&
-                    typeof category.parentId !== "string"
-                )
-            ) {
-                fail("Invalid or duplicate category.");
-            }
-
-            categoryMap.set(
-                category.id,
-                category
-            );
-
-        }
-
-        validateCategoryHierarchy(categoryMap);
-
-
-        /* Articles */
-
-        const articleIds = new Set();
-
-        for (const article of archive.articles) {
-
-            if (
-                !isObject(article) ||
-                !validId(article.id) ||
-                articleIds.has(article.id) ||
-                !categoryMap.has(article.categoryId) ||
-                !validName(article.name) ||
-                typeof article.subtitle !== "string" ||
-                !Array.isArray(article.blocks) ||
-                !validDate(article.createdAt) ||
-                !validDate(article.updatedAt)
-            ) {
-                fail("Invalid or duplicate article.");
-            }
-
-            articleIds.add(article.id);
-
-            validateBlocks(article.blocks);
-
-        }
-
-
-        /* Preferences */
-
-        const preferences = archive.preferences;
-
-        if (
-            !isObject(preferences) ||
-            !sortTypeSet.has(preferences.sort) ||
-            !Array.isArray(preferences.expanded) ||
-            !preferences.expanded.every(
-                id => typeof id === "string"
-            )
-        ) {
-            fail("Invalid Archive preferences.");
-        }
 
         return true;
 
     }
 
+    async function rawRecovery() {
 
-    /* ==================================================
-       10 — REGISTER ARCHIVE MODULE
-       ================================================== */
+        try {
 
-    A.data.registerExtension(
-        MODULE,
-        createArchive
-    );
+            const recovery = await readRecord(RECOVERY);
 
-    A.data.registerNormalizer(
-        MODULE,
-        normalizeArchive
-    );
+            if (recovery !== null) return recovery;
 
-    A.data.registerValidator(
-        MODULE,
-        validateArchive
-    );
+            const current = await readRecord(MAIN);
 
+            if (current !== null) return current;
 
-    /* ==================================================
-       11 — ARCHIVE DATA ACCESS
-       ================================================== */
+        } catch (error) {
 
-    const read = () =>
-        A.app.getModule(MODULE);
+            console.error(error);
 
-    const change = updater =>
-        A.app.updateModule(MODULE, updater);
-
-    function requireItem(items, id, message) {
-
-        const item = items.find(
-            entry => entry.id === id
-        );
-
-        if (!item) {
-            fail(message);
         }
 
-        return item;
+        return localStorage.getItem(
+            LEGACY_KEY + "-recovery"
+        ) || readLegacy();
 
     }
 
-    const requireCategory = (archive, id) =>
-        requireItem(
-            archive.categories,
-            id,
-            "Category not found."
+    async function exists() {
+
+        return (
+            await readRecord(MAIN) !== null ||
+            readLegacy() !== null
         );
-
-    const requireArticle = (archive, id) =>
-        requireItem(
-            archive.articles,
-            id,
-            "Article not found."
-        );
-
-    const requireBlock = (article, id) =>
-        requireItem(
-            article.blocks,
-            id,
-            "Content block not found."
-        );
-
-    const touch = item => {
-        item.updatedAt = now();
-    };
-
-    function expandCategory(archive, id) {
-
-        if (
-            id !== null &&
-            !archive.preferences.expanded.includes(id)
-        ) {
-            archive.preferences.expanded.push(id);
-        }
 
     }
 
+    async function estimate() {
 
-    /* DESCENDANT TRAVERSAL */
+        if (!navigator.storage?.estimate) {
+            return null;
+        }
 
-    function descendants(archive, id) {
+        return navigator.storage.estimate();
 
-        const children = groupBy(
-            archive.categories,
-            "parentId"
+    }
+
+    /* =====================================================
+       10 — BACKUP FORMAT
+       ===================================================== */
+
+    function serialize(database) {
+
+        const prepared = prepareDatabase(database);
+
+        return JSON.stringify(
+            {
+                ...prepared,
+                exportedAt: now()
+            },
+            null,
+            2
         );
+
+    }
+
+    function deserialize(input) {
+
+        let parsed;
+
+        try {
+
+            parsed = typeof input === "string"
+                ? JSON.parse(input)
+                : clone(input);
+
+        } catch {
+
+            fail("This file is not valid JSON.");
+
+        }
+
+        return prepareDatabase(parsed);
+
+    }
+
+    function backupFilename() {
+
+        const timestamp = now()
+            .replace(/[:.]/g, "-")
+            .slice(0, 19);
+
+        return `Aether-V2.2-${timestamp}.json`;
+
+    }
+
+    function inspectBackup(input) {
+
+        const database = deserialize(input);
+        const archive = database.modules.archive;
+
+        return {
+            schemaVersion: database.schemaVersion,
+            appVersion: database.appVersion,
+
+            categories: archive.categories.length,
+            articles: archive.articles.length,
+            folders: archive.folders.length,
+            presets: archive.presets.length,
+
+            modules: Object.keys(database.modules),
+
+            createdAt: database.createdAt,
+            updatedAt: database.updatedAt
+        };
+
+    }
+
+    /* =====================================================
+       11 — ARCHIVE UTILITIES
+       ===================================================== */
+
+    function createArchiveIndex(archive) {
+
+        const categories = new Map(
+            archive.categories.map(c => [c.id, c])
+        );
+
+        const articles = new Map(
+            archive.articles.map(a => [a.id, a])
+        );
+
+        const folders = new Map(
+            archive.folders.map(f => [f.id, f])
+        );
+
+        const categoryChildren = new Map();
+        const articleChildren = new Map();
+        const categoryArticles = new Map();
+        const folderArticles = new Map();
+
+        function add(map, key, value) {
+
+            if (!map.has(key)) {
+                map.set(key, []);
+            }
+
+            map.get(key).push(value);
+
+        }
+
+        archive.categories.forEach(category => {
+
+            add(
+                categoryChildren,
+                category.parentId,
+                category
+            );
+
+        });
+
+        archive.articles.forEach(article => {
+
+            add(
+                articleChildren,
+                article.parentArticleId,
+                article
+            );
+
+            add(
+                categoryArticles,
+                article.categoryId,
+                article
+            );
+
+            if (article.folderId) {
+
+                add(
+                    folderArticles,
+                    article.folderId,
+                    article
+                );
+
+            }
+
+        });
+
+        return {
+            categories,
+            articles,
+            folders,
+            categoryChildren,
+            articleChildren,
+            categoryArticles,
+            folderArticles
+        };
+
+    }
+
+    function descendants(items, id, parentKey) {
 
         const result = new Set([id]);
 
-        const queue = [id];
+        let changed = true;
 
-        /*
-           An index replaces Array.shift().
+        while (changed) {
 
-           Categories are grouped once instead of
-           rescanning the entire array for every parent.
-        */
+            changed = false;
 
-        for (
-            let cursor = 0;
-            cursor < queue.length;
-            cursor++
-        ) {
+            for (const item of items) {
 
-            const parent = queue[cursor];
+                if (
+                    result.has(item[parentKey]) &&
+                    !result.has(item.id)
+                ) {
 
-            const entries = children.get(parent);
-
-            if (!entries) {
-                continue;
-            }
-
-            for (const category of entries) {
-
-                if (!result.has(category.id)) {
-
-                    result.add(category.id);
-
-                    queue.push(category.id);
+                    result.add(item.id);
+                    changed = true;
 
                 }
 
             }
+
+        }
+
+        return [...result];
+
+    }
+
+    function categoryPath(archive, id) {
+
+        const result = [];
+        const seen = new Set();
+
+        const index = new Map(
+            archive.categories.map(c => [c.id, c])
+        );
+
+        while (id && !seen.has(id)) {
+
+            seen.add(id);
+
+            const category = index.get(id);
+
+            if (!category) break;
+
+            result.unshift(category);
+
+            id = category.parentId;
 
         }
 
@@ -1139,684 +1604,119 @@
 
     }
 
+    /* =====================================================
+       12 — PUBLIC DATA API
+       ===================================================== */
 
-    /* SHARED ARTICLE MUTATION */
+    A.data = {
 
-    function changeArticle(id, updater) {
+        create: createDatabase,
 
-        return change(archive => {
+        prepare: prepareDatabase,
 
-            const article = requireArticle(
-                archive,
-                id
+        normalize: normalizeDatabase,
+
+        validate: validateDatabase,
+
+        serialize,
+
+        deserialize,
+
+        inspectBackup,
+
+        backupFilename,
+
+        registerExtension,
+
+        registerMigration,
+
+        registerNormalizer,
+
+        registerValidator,
+
+        createArchive,
+
+        createArchiveIndex,
+
+        categoryPath,
+
+        categoryDescendants(archive, id) {
+
+            return descendants(
+                archive.categories,
+                id,
+                "parentId"
             );
 
-            const result = updater(
-                article,
-                archive
+        },
+
+        articleDescendants(archive, id) {
+
+            return descendants(
+                archive.articles,
+                id,
+                "parentArticleId"
             );
 
-            if (result !== false) {
-                touch(article);
-            }
+        },
 
-        });
+        defaultAppearance() {
+            return clone(DEFAULT_APPEARANCE);
+        },
 
-    }
-
-
-    /* ==================================================
-       12 — PUBLIC ARCHIVE API
-       ================================================== */
-
-    A.archive = {
-
-        read,
+        defaultBlockStyle() {
+            return clone(DEFAULT_STYLE);
+        },
 
         blockTypes: [...BLOCK_TYPES],
 
+        sortTypes: [...SORT_TYPES],
 
-        /* OPTIONAL INDEX ACCESS */
+        uid,
 
-        getIndex() {
+        now,
 
-            return createArchiveIndex(
-                read()
-            );
+        clone,
 
-        },
-
-
-        /* ----------------------------------------------
-           CATEGORY LOOKUP
-           ---------------------------------------------- */
-
-        getCategory(id) {
-
-            return read().categories.find(
-                category => category.id === id
-            ) || null;
-
-        },
-
-        getChildren(parentId = null) {
-
-            return read().categories.filter(
-                category =>
-                    category.parentId === parentId
-            );
-
-        },
-
-        getPath(id) {
-
-            const map = indexById(
-                read().categories
-            );
-
-            const path = [];
-            const visited = new Set();
-
-            let current = map.get(id);
-
-            while (
-                current &&
-                !visited.has(current.id)
-            ) {
-
-                visited.add(current.id);
-
-                path.push(current);
-
-                current = map.get(
-                    current.parentId
-                );
-
-            }
-
-            return path.reverse();
-
-        },
-
-        getDescendants(id) {
-
-            return descendants(
-                read(),
-                id
-            );
-
-        },
-
-
-        /* ----------------------------------------------
-           CREATE CATEGORY
-           ---------------------------------------------- */
-
-        createCategory(name, parentId = null) {
-
-            const timestamp = now();
-
-            const category = {
-                id: uid(),
-                name: cleanName(name),
-                parentId,
-                createdAt: timestamp,
-                updatedAt: timestamp
-            };
-
-            change(archive => {
-
-                if (parentId !== null) {
-
-                    requireCategory(
-                        archive,
-                        parentId
-                    );
-
-                }
-
-                archive.categories.push(category);
-
-                expandCategory(
-                    archive,
-                    parentId
-                );
-
-            });
-
-            return category.id;
-
-        },
-
-
-        /* RENAME CATEGORY */
-
-        renameCategory(id, name) {
-
-            const cleaned = cleanName(name);
-
-            change(archive => {
-
-                const category = requireCategory(
-                    archive,
-                    id
-                );
-
-                category.name = cleaned;
-
-                touch(category);
-
-            });
-
-        },
-
-
-        /* MOVE CATEGORY */
-
-        moveCategory(id, parentId = null) {
-
-            change(archive => {
-
-                const category = requireCategory(
-                    archive,
-                    id
-                );
-
-                if (parentId !== null) {
-
-                    requireCategory(
-                        archive,
-                        parentId
-                    );
-
-                    if (
-                        descendants(
-                            archive,
-                            id
-                        ).has(parentId)
-                    ) {
-                        fail(
-                            "A category cannot contain itself."
-                        );
-                    }
-
-                }
-
-                category.parentId = parentId;
-
-                touch(category);
-
-                expandCategory(
-                    archive,
-                    parentId
-                );
-
-            });
-
-        },
-
-
-        /* REORDER CATEGORY */
-
-        reorderCategory(id, direction) {
-
-            change(archive => {
-
-                const category = requireCategory(
-                    archive,
-                    id
-                );
-
-                const positions = [];
-
-                for (
-                    let i = 0;
-                    i < archive.categories.length;
-                    i++
-                ) {
-
-                    if (
-                        archive.categories[i].parentId ===
-                        category.parentId
-                    ) {
-                        positions.push(i);
-                    }
-
-                }
-
-                const index = positions.findIndex(
-                    position =>
-                        archive.categories[position].id === id
-                );
-
-                const target = index + direction;
-
-                if (
-                    index < 0 ||
-                    !Number.isInteger(target) ||
-                    target < 0 ||
-                    target >= positions.length
-                ) {
-                    return;
-                }
-
-                swap(
-                    archive.categories,
-                    positions[index],
-                    positions[target]
-                );
-
-            });
-
-        },
-
-
-        /* DELETE CATEGORY & DESCENDANTS */
-
-        deleteCategory(id) {
-
-            change(archive => {
-
-                requireCategory(archive, id);
-
-                const removed = descendants(
-                    archive,
-                    id
-                );
-
-                archive.categories =
-                    archive.categories.filter(
-                        category =>
-                            !removed.has(category.id)
-                    );
-
-                archive.articles =
-                    archive.articles.filter(
-                        article =>
-                            !removed.has(article.categoryId)
-                    );
-
-                archive.preferences.expanded =
-                    archive.preferences.expanded.filter(
-                        categoryId =>
-                            !removed.has(categoryId)
-                    );
-
-            });
-
-        },
-
-
-        /* ----------------------------------------------
-           ARCHIVE PREFERENCES
-           ---------------------------------------------- */
-
-        toggleExpanded(id) {
-
-            change(archive => {
-
-                const expanded =
-                    archive.preferences.expanded;
-
-                if (expanded.includes(id)) {
-
-                    archive.preferences.expanded =
-                        expanded.filter(
-                            entry => entry !== id
-                        );
-
-                } else {
-
-                    expanded.push(id);
-
-                }
-
-            });
-
-        },
-
-        setSort(sort) {
-
-            if (!sortTypeSet.has(sort)) {
-                fail("Invalid Archive sort.");
-            }
-
-            change(archive => {
-                archive.preferences.sort = sort;
-            });
-
-        },
-
-
-        /* ----------------------------------------------
-           ARTICLE LOOKUP
-           ---------------------------------------------- */
-
-        getArticle(id) {
-
-            return read().articles.find(
-                article => article.id === id
-            ) || null;
-
-        },
-
-        getArticles(
-            categoryId,
-            sort,
-            includeDescendants = false
-        ) {
-
-            const archive = read();
-
-            if (sort === undefined) {
-                sort = archive.preferences.sort;
-            }
-
-            let articles;
-
-            if (includeDescendants) {
-
-                const categories = descendants(
-                    archive,
-                    categoryId
-                );
-
-                articles = archive.articles.filter(
-                    article =>
-                        categories.has(article.categoryId)
-                );
-
-            } else {
-
-                articles = archive.articles.filter(
-                    article =>
-                        article.categoryId === categoryId
-                );
-
-            }
-
-
-            /* Date-based sorting */
-
-            if (
-                sort === "created" ||
-                sort === "edited"
-            ) {
-
-                const key = sort === "created"
-                    ? "createdAt"
-                    : "updatedAt";
-
-                /*
-                   Parse each date once, rather than
-                   repeatedly inside the sort comparator.
-                */
-
-                const dates = new Map(
-                    articles.map(article => [
-                        article.id,
-                        Date.parse(article[key])
-                    ])
-                );
-
-                return articles.sort(
-                    (a, b) =>
-                        dates.get(b.id) -
-                        dates.get(a.id) ||
-                        alphabetical(a, b)
-                );
-
-            }
-
-            return articles.sort(alphabetical);
-
-        },
-
-
-        /* ----------------------------------------------
-           CREATE ARTICLE
-           ---------------------------------------------- */
-
-        createArticle(categoryId, name) {
-
-            const timestamp = now();
-
-            const article = {
-                id: uid(),
-                categoryId,
-
-                name: cleanName(name),
-                subtitle: "",
-
-                createdAt: timestamp,
-                updatedAt: timestamp,
-
-                blocks: []
-            };
-
-            change(archive => {
-
-                requireCategory(
-                    archive,
-                    categoryId
-                );
-
-                archive.articles.push(article);
-
-            });
-
-            return article.id;
-
-        },
-
-
-        /* UPDATE ARTICLE */
-
-        updateArticle(id, patch) {
-
-            changeArticle(
-                id,
-                (article, archive) => {
-
-                    if ("name" in patch) {
-
-                        article.name = cleanName(
-                            patch.name
-                        );
-
-                    }
-
-                    if ("subtitle" in patch) {
-
-                        article.subtitle = String(
-                            patch.subtitle
-                        );
-
-                    }
-
-                    if ("categoryId" in patch) {
-
-                        requireCategory(
-                            archive,
-                            patch.categoryId
-                        );
-
-                        article.categoryId =
-                            patch.categoryId;
-
-                    }
-
-                }
-            );
-
-        },
-
-
-        /* DELETE ARTICLE */
-
-        deleteArticle(id) {
-
-            change(archive => {
-
-                requireArticle(archive, id);
-
-                archive.articles =
-                    archive.articles.filter(
-                        article => article.id !== id
-                    );
-
-            });
-
-        },
-
-
-        /* ----------------------------------------------
-           CONTENT BLOCKS
-           ---------------------------------------------- */
-
-        addBlock(articleId, type) {
-
-            if (!blockTypeSet.has(type)) {
-                fail("Unknown content block.");
-            }
-
-            const block = {
-                id: uid(),
-                type,
-                label: "",
-                text: ""
-            };
-
-            changeArticle(
-                articleId,
-                article => {
-                    article.blocks.push(block);
-                }
-            );
-
-            return block.id;
-
-        },
-
-
-        /* UPDATE CONTENT BLOCK */
-
-        updateBlock(articleId, blockId, patch) {
-
-            changeArticle(
-                articleId,
-                article => {
-
-                    const block = requireBlock(
-                        article,
-                        blockId
-                    );
-
-                    if ("text" in patch) {
-
-                        block.text = String(
-                            patch.text
-                        );
-
-                    }
-
-                    if ("label" in patch) {
-
-                        block.label = String(
-                            patch.label
-                        );
-
-                    }
-
-                }
-            );
-
-        },
-
-
-        /* MOVE CONTENT BLOCK */
-
-        moveBlock(articleId, blockId, direction) {
-
-            changeArticle(
-                articleId,
-                article => {
-
-                    const index =
-                        article.blocks.findIndex(
-                            block =>
-                                block.id === blockId
-                        );
-
-                    const target = index + direction;
-
-                    if (!Number.isInteger(target)) {
-                        return false;
-                    }
-
-                    return swap(
-                        article.blocks,
-                        index,
-                        target
-                    );
-
-                }
-            );
-
-        },
-
-
-        /* DELETE CONTENT BLOCK */
-
-        deleteBlock(articleId, blockId) {
-
-            changeArticle(
-                articleId,
-                article => {
-
-                    article.blocks =
-                        article.blocks.filter(
-                            block =>
-                                block.id !== blockId
-                        );
-
-                }
-            );
-
+        get schemaVersion() {
+            return VERSION;
         }
 
     };
 
+    A.storage = {
+
+        connect,
+
+        load,
+
+        save,
+
+        exists,
+
+        createRecovery,
+
+        rawRecovery,
+
+        estimate
+
+    };
 
 })();
 
+/* =========================================================
+   END — AETHER V2.2 DATA FOUNDATION
 
-/* ==================================================
-   END — AETHER V2.1
+   FUTURE EXTENSIONS MAY BE APPENDED BELOW.
 
-   DATA FOUNDATION
+   Example:
 
-   Future modules can be registered using:
-
-   Aether.data.registerExtension(
-       "moduleName",
-       () => ({
-           version: 1
+   Aether.data.registerExtension("characters", {
+       create: () => ({
+           entries: [],
+           preferences: {}
        })
-   );
+   });
 
-   Aether.data.registerNormalizer(
-       "moduleName",
-       module => module
-   );
-
-   Aether.data.registerValidator(
-       "moduleName",
-       module => true
-   );
-
-   All mutations should continue to use:
-
-   Aether.app.updateModule()
-
-   ================================================== */
+   Existing modules are preserved when new modules are added.
+   ========================================================= */
