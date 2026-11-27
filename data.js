@@ -892,3 +892,1134 @@
 
    Future data modules can be appended below.
    ================================================== */
+
+
+/* ==================================================
+   V2.0 — WORLD ARCHIVE DATA MODULE
+   ================================================== */
+
+(() => {
+
+    "use strict";
+
+    const A = window.Aether;
+
+    A.config.version = "2.0";
+
+    const MODULE = "archive";
+
+    const BLOCK_TYPES = [
+        "heading",
+        "subheading",
+        "text",
+        "information",
+        "quote",
+        "divider"
+    ];
+
+
+    /* ==================================================
+       01 — UTILITIES
+       ================================================== */
+
+    const now = () => new Date().toISOString();
+
+    const uid = () => {
+
+        if (globalThis.crypto?.randomUUID) {
+            return crypto.randomUUID();
+        }
+
+        return (
+            Date.now().toString(36) +
+            "-" +
+            Math.random().toString(36).slice(2) +
+            "-" +
+            Math.random().toString(36).slice(2)
+        );
+
+    };
+
+    const isObject = value => (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value)
+    );
+
+    const validName = value => (
+        typeof value === "string" &&
+        value.trim().length > 0 &&
+        value.length <= 250
+    );
+
+    function cleanName(value) {
+
+        const name = String(value ?? "").trim();
+
+        if (!validName(name)) {
+
+            throw new Error(
+                "Enter a name between 1 and 250 characters."
+            );
+
+        }
+
+        return name;
+
+    }
+
+
+    /* ==================================================
+       02 — MODULE DEFAULTS
+       ================================================== */
+
+    function createArchive() {
+
+        return {
+
+            version: 1,
+
+            categories: [],
+
+            articles: [],
+
+            preferences: {
+
+                sort: "alphabetical",
+
+                expanded: []
+
+            }
+
+        };
+
+    }
+
+
+    /* ==================================================
+       03 — MODULE MIGRATIONS
+       ================================================== */
+
+    const migrations = new Map();
+
+    function normalizeArchive(input) {
+
+        if (input === undefined) {
+
+            return createArchive();
+
+        }
+
+        if (!isObject(input)) {
+
+            throw new Error(
+                "The Archive module is invalid."
+            );
+
+        }
+
+        const archive = A.utils.clone(input);
+
+        if (archive.version === undefined) {
+            archive.version = 1;
+        }
+
+        if (
+            !Number.isInteger(archive.version) ||
+            archive.version < 1 ||
+            archive.version > 1
+        ) {
+
+            throw new Error(
+                "Unsupported Archive version."
+            );
+
+        }
+
+        while (migrations.has(archive.version)) {
+
+            const migrate =
+                migrations.get(archive.version);
+
+            const oldVersion = archive.version;
+
+            migrate(archive);
+
+            if (archive.version <= oldVersion) {
+
+                throw new Error(
+                    "Archive migration did not advance."
+                );
+
+            }
+
+        }
+
+        if (archive.preferences === undefined) {
+
+            archive.preferences = {};
+
+        }
+
+        if (!isObject(archive.preferences)) {
+
+            throw new Error(
+                "Invalid Archive preferences."
+            );
+
+        }
+
+        archive.preferences.sort ??=
+            "alphabetical";
+
+        archive.preferences.expanded ??= [];
+
+        return archive;
+
+    }
+
+
+    /* ==================================================
+       04 — DATA VALIDATION
+       ================================================== */
+
+    function validateArchive(archive) {
+
+        if (
+            !isObject(archive) ||
+            archive.version !== 1 ||
+            !Array.isArray(archive.categories) ||
+            !Array.isArray(archive.articles)
+        ) {
+
+            throw new Error(
+                "Invalid Archive structure."
+            );
+
+        }
+
+        const categoryMap = new Map();
+
+        for (const category of archive.categories) {
+
+            if (
+                !isObject(category) ||
+                typeof category.id !== "string" ||
+                !category.id ||
+                categoryMap.has(category.id) ||
+                !validName(category.name) ||
+                (
+                    category.parentId !== null &&
+                    typeof category.parentId !== "string"
+                )
+            ) {
+
+                throw new Error(
+                    "Invalid or duplicate category."
+                );
+
+            }
+
+            categoryMap.set(
+                category.id,
+                category
+            );
+
+        }
+
+
+        /* VERIFY CATEGORY HIERARCHY */
+
+        for (const category of archive.categories) {
+
+            const visited = new Set([
+                category.id
+            ]);
+
+            let parentId = category.parentId;
+
+            while (parentId !== null) {
+
+                if (
+                    visited.has(parentId) ||
+                    !categoryMap.has(parentId)
+                ) {
+
+                    throw new Error(
+                        "Invalid category hierarchy."
+                    );
+
+                }
+
+                visited.add(parentId);
+
+                parentId =
+                    categoryMap.get(parentId).parentId;
+
+            }
+
+        }
+
+
+        /* VERIFY ARTICLES */
+
+        const articleIds = new Set();
+
+        for (const article of archive.articles) {
+
+            if (
+                !isObject(article) ||
+                typeof article.id !== "string" ||
+                !article.id ||
+                articleIds.has(article.id) ||
+                !categoryMap.has(article.categoryId) ||
+                !validName(article.name) ||
+                typeof article.subtitle !== "string" ||
+                !Array.isArray(article.blocks) ||
+                !Number.isFinite(
+                    Date.parse(article.createdAt)
+                ) ||
+                !Number.isFinite(
+                    Date.parse(article.updatedAt)
+                )
+            ) {
+
+                throw new Error(
+                    "Invalid or duplicate article."
+                );
+
+            }
+
+            articleIds.add(article.id);
+
+            const blockIds = new Set();
+
+            for (const block of article.blocks) {
+
+                if (
+                    !isObject(block) ||
+                    typeof block.id !== "string" ||
+                    !block.id ||
+                    blockIds.has(block.id) ||
+                    !BLOCK_TYPES.includes(block.type) ||
+                    typeof block.text !== "string" ||
+                    typeof block.label !== "string"
+                ) {
+
+                    throw new Error(
+                        "Invalid article content block."
+                    );
+
+                }
+
+                blockIds.add(block.id);
+
+            }
+
+        }
+
+
+        /* VERIFY PREFERENCES */
+
+        if (
+            !isObject(archive.preferences) ||
+            ![
+                "alphabetical",
+                "created",
+                "edited"
+            ].includes(archive.preferences.sort) ||
+            !Array.isArray(
+                archive.preferences.expanded
+            ) ||
+            !archive.preferences.expanded.every(
+                id => typeof id === "string"
+            )
+        ) {
+
+            throw new Error(
+                "Invalid Archive preferences."
+            );
+
+        }
+
+        return true;
+
+    }
+
+
+    /* ==================================================
+       05 — INTEGRATE WITH EXISTING DATABASE
+       ================================================== */
+
+    const originalNormalize =
+        A.data.normalize.bind(A.data);
+
+    A.data.normalize = function (input) {
+
+        const database =
+            originalNormalize(input);
+
+        database.modules[MODULE] =
+            normalizeArchive(
+                database.modules[MODULE]
+            );
+
+        return database;
+
+    };
+
+
+    const originalCreate =
+        A.data.create.bind(A.data);
+
+    A.data.create = function (...args) {
+
+        const database =
+            originalCreate(...args);
+
+        database.modules[MODULE] =
+            normalizeArchive(
+                database.modules[MODULE]
+            );
+
+        return database;
+
+    };
+
+
+    A.data.registerValidator(
+        MODULE,
+        validateArchive
+    );
+
+
+    /* ==================================================
+       06 — ARCHIVE DATA ACCESS
+       ================================================== */
+
+    const read = () => A.app.getModule(MODULE);
+
+    const change = updater => (
+        A.app.updateModule(
+            MODULE,
+            updater
+        )
+    );
+
+    function requireCategory(archive, id) {
+
+        const category =
+            archive.categories.find(
+                item => item.id === id
+            );
+
+        if (!category) {
+
+            throw new Error(
+                "Category not found."
+            );
+
+        }
+
+        return category;
+
+    }
+
+    function requireArticle(archive, id) {
+
+        const article =
+            archive.articles.find(
+                item => item.id === id
+            );
+
+        if (!article) {
+
+            throw new Error(
+                "Article not found."
+            );
+
+        }
+
+        return article;
+
+    }
+
+
+    /* FIND ALL DESCENDANTS */
+
+    function descendants(archive, id) {
+
+        const result = new Set([id]);
+
+        const queue = [id];
+
+        while (queue.length) {
+
+            const parentId = queue.shift();
+
+            for (const category of archive.categories) {
+
+                if (
+                    category.parentId === parentId &&
+                    !result.has(category.id)
+                ) {
+
+                    result.add(category.id);
+
+                    queue.push(category.id);
+
+                }
+
+            }
+
+        }
+
+        return result;
+
+    }
+
+
+    /* ==================================================
+       07 — PUBLIC ARCHIVE API
+       ================================================== */
+
+    A.archive = {
+
+        read,
+
+        blockTypes: [...BLOCK_TYPES],
+
+
+        /* CATEGORY LOOKUP */
+
+        getCategory(id) {
+
+            return read().categories.find(
+                category => category.id === id
+            ) || null;
+
+        },
+
+
+        getChildren(parentId = null) {
+
+            return read().categories.filter(
+                category =>
+                    category.parentId === parentId
+            );
+
+        },
+
+
+        getPath(id) {
+
+            const archive = read();
+
+            const map = new Map(
+                archive.categories.map(
+                    category => [
+                        category.id,
+                        category
+                    ]
+                )
+            );
+
+            const path = [];
+
+            let current = map.get(id);
+
+            while (current) {
+
+                path.unshift(current);
+
+                current = map.get(
+                    current.parentId
+                );
+
+            }
+
+            return path;
+
+        },
+
+
+        getDescendants(id) {
+
+            return descendants(
+                read(),
+                id
+            );
+
+        },
+
+
+        /* CREATE CATEGORY */
+
+        createCategory(name, parentId = null) {
+
+            const category = {
+
+                id: uid(),
+
+                name: cleanName(name),
+
+                parentId,
+
+                createdAt: now(),
+
+                updatedAt: now()
+
+            };
+
+            change(archive => {
+
+                if (parentId !== null) {
+
+                    requireCategory(
+                        archive,
+                        parentId
+                    );
+
+                }
+
+                archive.categories.push(category);
+
+                if (
+                    parentId !== null &&
+                    !archive.preferences.expanded
+                        .includes(parentId)
+                ) {
+
+                    archive.preferences.expanded
+                        .push(parentId);
+
+                }
+
+            });
+
+            return category.id;
+
+        },
+
+
+        /* RENAME CATEGORY */
+
+        renameCategory(id, name) {
+
+            change(archive => {
+
+                const category =
+                    requireCategory(archive, id);
+
+                category.name =
+                    cleanName(name);
+
+                category.updatedAt = now();
+
+            });
+
+        },
+
+
+        /* MOVE CATEGORY */
+
+        moveCategory(id, parentId = null) {
+
+            change(archive => {
+
+                const category =
+                    requireCategory(archive, id);
+
+                if (parentId !== null) {
+
+                    requireCategory(
+                        archive,
+                        parentId
+                    );
+
+                }
+
+                const excluded =
+                    descendants(archive, id);
+
+                if (excluded.has(parentId)) {
+
+                    throw new Error(
+                        "A category cannot contain itself."
+                    );
+
+                }
+
+                category.parentId = parentId;
+
+                category.updatedAt = now();
+
+                if (
+                    parentId !== null &&
+                    !archive.preferences.expanded
+                        .includes(parentId)
+                ) {
+
+                    archive.preferences.expanded
+                        .push(parentId);
+
+                }
+
+            });
+
+        },
+
+
+        /* REORDER CATEGORY */
+
+        reorderCategory(id, direction) {
+
+            change(archive => {
+
+                const category =
+                    requireCategory(archive, id);
+
+                const siblings =
+                    archive.categories.filter(
+                        item =>
+                            item.parentId ===
+                            category.parentId
+                    );
+
+                const index =
+                    siblings.findIndex(
+                        item => item.id === id
+                    );
+
+                const target =
+                    siblings[index + direction];
+
+                if (!target) return;
+
+                const a =
+                    archive.categories.indexOf(
+                        category
+                    );
+
+                const b =
+                    archive.categories.indexOf(
+                        target
+                    );
+
+                [
+                    archive.categories[a],
+                    archive.categories[b]
+                ] = [
+                    archive.categories[b],
+                    archive.categories[a]
+                ];
+
+            });
+
+        },
+
+
+        /* DELETE CATEGORY AND DESCENDANTS */
+
+        deleteCategory(id) {
+
+            change(archive => {
+
+                requireCategory(archive, id);
+
+                const removed =
+                    descendants(archive, id);
+
+                archive.categories =
+                    archive.categories.filter(
+                        category =>
+                            !removed.has(category.id)
+                    );
+
+                archive.articles =
+                    archive.articles.filter(
+                        article =>
+                            !removed.has(
+                                article.categoryId
+                            )
+                    );
+
+                archive.preferences.expanded =
+                    archive.preferences.expanded
+                        .filter(
+                            item => !removed.has(item)
+                        );
+
+            });
+
+        },
+
+
+        /* EXPANSION PREFERENCES */
+
+        toggleExpanded(id) {
+
+            change(archive => {
+
+                const expanded =
+                    archive.preferences.expanded;
+
+                if (expanded.includes(id)) {
+
+                    archive.preferences.expanded =
+                        expanded.filter(
+                            item => item !== id
+                        );
+
+                } else {
+
+                    expanded.push(id);
+
+                }
+
+            });
+
+        },
+
+
+        setSort(sort) {
+
+            change(archive => {
+
+                archive.preferences.sort = sort;
+
+            });
+
+        },
+
+
+        /* ARTICLE LOOKUP */
+
+        getArticle(id) {
+
+            return read().articles.find(
+                article => article.id === id
+            ) || null;
+
+        },
+
+
+        getArticles(
+            categoryId,
+            sort = read().preferences.sort,
+            includeDescendants = false
+        ) {
+
+            const archive = read();
+
+            const categories =
+                includeDescendants
+                    ? descendants(
+                        archive,
+                        categoryId
+                    )
+                    : new Set([categoryId]);
+
+            const articles =
+                archive.articles.filter(
+                    article =>
+                        categories.has(
+                            article.categoryId
+                        )
+                );
+
+            const alphabetical = (a,b) => (
+                a.name.localeCompare(
+                    b.name,
+                    undefined,
+                    {
+                        sensitivity: "base",
+                        numeric: true
+                    }
+                )
+            );
+
+            if (sort === "created") {
+
+                return articles.sort(
+                    (a,b) =>
+                        Date.parse(b.createdAt) -
+                        Date.parse(a.createdAt) ||
+                        alphabetical(a,b)
+                );
+
+            }
+
+            if (sort === "edited") {
+
+                return articles.sort(
+                    (a,b) =>
+                        Date.parse(b.updatedAt) -
+                        Date.parse(a.updatedAt) ||
+                        alphabetical(a,b)
+                );
+
+            }
+
+            return articles.sort(alphabetical);
+
+        },
+
+
+        /* CREATE ARTICLE */
+
+        createArticle(categoryId, name) {
+
+            const article = {
+
+                id: uid(),
+
+                categoryId,
+
+                name: cleanName(name),
+
+                subtitle: "",
+
+                createdAt: now(),
+
+                updatedAt: now(),
+
+                blocks: []
+
+            };
+
+            change(archive => {
+
+                requireCategory(
+                    archive,
+                    categoryId
+                );
+
+                archive.articles.push(article);
+
+            });
+
+            return article.id;
+
+        },
+
+
+        /* UPDATE ARTICLE */
+
+        updateArticle(id, patch) {
+
+            change(archive => {
+
+                const article =
+                    requireArticle(archive, id);
+
+                if ("name" in patch) {
+
+                    article.name =
+                        cleanName(patch.name);
+
+                }
+
+                if ("subtitle" in patch) {
+
+                    article.subtitle =
+                        String(patch.subtitle);
+
+                }
+
+                if ("categoryId" in patch) {
+
+                    requireCategory(
+                        archive,
+                        patch.categoryId
+                    );
+
+                    article.categoryId =
+                        patch.categoryId;
+
+                }
+
+                article.updatedAt = now();
+
+            });
+
+        },
+
+
+        deleteArticle(id) {
+
+            change(archive => {
+
+                requireArticle(archive, id);
+
+                archive.articles =
+                    archive.articles.filter(
+                        article => article.id !== id
+                    );
+
+            });
+
+        },
+
+
+        /* CONTENT BLOCKS */
+
+        addBlock(articleId, type) {
+
+            if (!BLOCK_TYPES.includes(type)) {
+
+                throw new Error(
+                    "Unknown content block."
+                );
+
+            }
+
+            const block = {
+
+                id: uid(),
+
+                type,
+
+                label: "",
+
+                text: ""
+
+            };
+
+            change(archive => {
+
+                const article =
+                    requireArticle(
+                        archive,
+                        articleId
+                    );
+
+                article.blocks.push(block);
+
+                article.updatedAt = now();
+
+            });
+
+            return block.id;
+
+        },
+
+
+        updateBlock(articleId, blockId, patch) {
+
+            change(archive => {
+
+                const article =
+                    requireArticle(
+                        archive,
+                        articleId
+                    );
+
+                const block =
+                    article.blocks.find(
+                        item => item.id === blockId
+                    );
+
+                if (!block) {
+
+                    throw new Error(
+                        "Content block not found."
+                    );
+
+                }
+
+                if ("text" in patch) {
+
+                    block.text =
+                        String(patch.text);
+
+                }
+
+                if ("label" in patch) {
+
+                    block.label =
+                        String(patch.label);
+
+                }
+
+                article.updatedAt = now();
+
+            });
+
+        },
+
+
+        moveBlock(articleId, blockId, direction) {
+
+            change(archive => {
+
+                const article =
+                    requireArticle(
+                        archive,
+                        articleId
+                    );
+
+                const index =
+                    article.blocks.findIndex(
+                        block => block.id === blockId
+                    );
+
+                const target = index + direction;
+
+                if (
+                    index < 0 ||
+                    target < 0 ||
+                    target >= article.blocks.length
+                ) return;
+
+                [
+                    article.blocks[index],
+                    article.blocks[target]
+                ] = [
+                    article.blocks[target],
+                    article.blocks[index]
+                ];
+
+                article.updatedAt = now();
+
+            });
+
+        },
+
+
+        deleteBlock(articleId, blockId) {
+
+            change(archive => {
+
+                const article =
+                    requireArticle(
+                        archive,
+                        articleId
+                    );
+
+                article.blocks =
+                    article.blocks.filter(
+                        block => block.id !== blockId
+                    );
+
+                article.updatedAt = now();
+
+            });
+
+        }
+
+    };
+
+
+})();
+
+
+/* ==================================================
+   END V2.0 — WORLD ARCHIVE DATA
+
+   Future modules may be appended below.
+
+   Aether.archive is the public data interface.
+   All mutations use the V1.2 persistence system.
+
+   ================================================== */
