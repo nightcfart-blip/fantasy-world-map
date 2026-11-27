@@ -2944,3 +2944,3036 @@
    database:exported
 
    ================================================== */
+
+
+/* ==================================================
+   V2.0 — WORLD ARCHIVE APPLICATION
+   ================================================== */
+
+(() => {
+
+    "use strict";
+
+    const A = window.Aether;
+
+    const D = A.archive;
+
+    const state = {
+
+        page: null,
+
+        dialog: null,
+
+        view: "archive",
+
+        search: "",
+
+        categoryId: null,
+
+        articleId: null,
+
+        includeDescendants: false,
+
+        archiveScroll: 0
+
+    };
+
+
+    /* ==================================================
+       01 — DOM UTILITIES
+       ================================================== */
+
+    function element(tag, className, text) {
+
+        const node =
+            document.createElement(tag);
+
+        if (className) {
+            node.className = className;
+        }
+
+        if (text !== undefined) {
+            node.textContent = text;
+        }
+
+        return node;
+
+    }
+
+
+    function button(
+        text,
+        className,
+        handler,
+        label = text
+    ) {
+
+        const node = element(
+            "button",
+            className,
+            text
+        );
+
+        node.type = "button";
+
+        node.setAttribute(
+            "aria-label",
+            label
+        );
+
+        node.title = label;
+
+        node.addEventListener(
+            "click",
+            event => {
+
+                event.preventDefault();
+
+                try {
+
+                    handler(event);
+
+                } catch (error) {
+
+                    reportError(error);
+
+                }
+
+            }
+        );
+
+        return node;
+
+    }
+
+
+    function iconButton(
+        text,
+        label,
+        handler
+    ) {
+
+        return button(
+            text,
+            "archive-icon-button",
+            handler,
+            label
+        );
+
+    }
+
+
+    function actionButton(
+        text,
+        handler,
+        variant = ""
+    ) {
+
+        return button(
+            text,
+            "archive-button " + variant,
+            handler
+        );
+
+    }
+
+
+    function reportError(error) {
+
+        console.error(
+            "Archive:",
+            error
+        );
+
+        A.notify?.(
+            "Archive",
+            error.message ||
+                "Something went wrong.",
+            "error",
+            5000
+        );
+
+    }
+
+
+    function safely(handler) {
+
+        try {
+
+            return handler();
+
+        } catch (error) {
+
+            reportError(error);
+
+            return null;
+
+        }
+
+    }
+
+
+    function formatDate(value) {
+
+        const date = new Date(value);
+
+        if (
+            !Number.isFinite(date.getTime())
+        ) return "";
+
+        return date.toLocaleDateString(
+            undefined,
+            {
+                day: "numeric",
+                month: "short",
+                year: "numeric"
+            }
+        );
+
+    }
+
+
+    function growTextarea(node) {
+
+        node.style.height = "auto";
+
+        node.style.height =
+            node.scrollHeight + "px";
+
+    }
+
+
+    function growAllTextareas() {
+
+        state.page
+            ?.querySelectorAll("textarea")
+            .forEach(growTextarea);
+
+    }
+
+
+    /* ==================================================
+       02 — ORNAMENTAL GRAPHICS
+       ================================================== */
+
+    function ornament() {
+
+        const wrapper = element(
+            "div",
+            "archive-ornament"
+        );
+
+        /*
+           Static SVG artwork only.
+           User content is never inserted
+           into HTML strings.
+        */
+
+        wrapper.innerHTML = `
+
+            <svg
+                viewBox="0 0 340 180"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+            >
+
+                <defs>
+
+                    <linearGradient
+                        id="archive-wave-gradient"
+                        x1="0"
+                        y1="0"
+                        x2="1"
+                        y2="1"
+                    >
+
+                        <stop
+                            offset="0"
+                            stop-color="#b0ceca"
+                        />
+
+                        <stop
+                            offset=".45"
+                            stop-color="#27606c"
+                        />
+
+                        <stop
+                            offset="1"
+                            stop-color="#10232e"
+                        />
+
+                    </linearGradient>
+
+                </defs>
+
+                <g
+                    stroke="#c68d5d"
+                    stroke-width=".8"
+                >
+
+                    <path
+                        fill="url(#archive-wave-gradient)"
+                        d="
+                            M-20 150
+                            C40 170 80 90 145 90
+                            C205 90 220 140 260 100
+                            C285 75 270 30 240 35
+                            C205 40 213 78 235 70
+                            C218 60 242 48 250 65
+                            C270 100 210 100 180 70
+                            C110 10 80 140 -20 150
+                            Z
+                        "
+                    />
+
+                    <path
+                        fill="#27606c"
+                        d="
+                            M40 170
+                            C120 145 130 105 185 120
+                            C230 140 285 110 290 65
+                            C300 20 265 10 255 25
+                            C295 0 335 45 310 100
+                            C280 165 180 140 120 160
+                            Z
+                        "
+                    />
+
+                    <path
+                        fill="#7baaab"
+                        d="
+                            M100 145
+                            C155 110 170 145 205 130
+                            C250 110 245 80 220 90
+                            C240 65 275 95 245 125
+                            C205 165 155 125 100 145
+                            Z
+                        "
+                    />
+
+                </g>
+
+                <g
+                    fill="none"
+                    stroke="#e6bd8b"
+                    stroke-width=".65"
+                    opacity=".8"
+                >
+
+                    <path
+                        d="M0 155 C100 150 100 65 175 95 S290 140 300 50"
+                    />
+
+                    <path
+                        d="M30 165 C110 160 140 110 190 130 S280 145 325 90"
+                    />
+
+                    <path
+                        d="M130 55 Q175 10 220 40"
+                    />
+
+                    <path
+                        d="M190 35 Q220 5 260 18"
+                    />
+
+                </g>
+
+                <g fill="#e6bd8b">
+
+                    <circle cx="190" cy="25" r="2"/>
+                    <circle cx="285" cy="15" r="1.8"/>
+                    <circle cx="310" cy="125" r="2"/>
+                    <circle cx="145" cy="55" r="1.2"/>
+
+                </g>
+
+            </svg>
+
+        `;
+
+        return wrapper;
+
+    }
+
+
+    /* ==================================================
+       03 — PAGE MANAGEMENT
+       ================================================== */
+
+    function ensureModule() {
+
+        if (!A.app.database) {
+
+            throw new Error(
+                "The world database is not ready."
+            );
+
+        }
+
+        if (
+            !A.app.database.modules.archive
+        ) {
+
+            A.app.database =
+                A.data.prepare(
+                    A.app.database
+                );
+
+            A.app.markDirty();
+
+        }
+
+    }
+
+
+    function ensurePage() {
+
+        if (
+            state.page &&
+            state.page.isConnected
+        ) {
+
+            return state.page;
+
+        }
+
+        state.page = element(
+            "section",
+            "archive-page"
+        );
+
+        state.page.setAttribute(
+            "aria-label",
+            "World Archive"
+        );
+
+        document.body.append(state.page);
+
+        return state.page;
+
+    }
+
+
+    function closeDialog() {
+
+        if (!state.dialog) return;
+
+        const dialog = state.dialog;
+
+        state.dialog = null;
+
+        if (dialog.open) {
+            dialog.close();
+        }
+
+        dialog.remove();
+
+    }
+
+
+    function closeArchive() {
+
+        A.app.flushSave();
+
+        closeDialog();
+
+        state.page?.remove();
+
+        state.page = null;
+
+        state.view = "archive";
+
+        state.articleId = null;
+
+        state.categoryId = null;
+
+        state.search = "";
+
+        state.archiveScroll = 0;
+
+        A.app.navigate("menu");
+
+    }
+
+
+    function createPageContainer() {
+
+        const page = ensurePage();
+
+        page.replaceChildren();
+
+        const container = element(
+            "div",
+            "archive-container"
+        );
+
+        page.append(container);
+
+        return container;
+
+    }
+
+
+    function topbar(
+        backText,
+        backHandler,
+        label
+    ) {
+
+        const bar = element(
+            "div",
+            "archive-topbar"
+        );
+
+        bar.append(
+
+            button(
+                backText,
+                "archive-back",
+                backHandler
+            ),
+
+            element(
+                "span",
+                "archive-eyebrow",
+                label
+            )
+
+        );
+
+        return bar;
+
+    }
+
+
+    function emptyState(
+        heading,
+        description
+    ) {
+
+        const empty = element(
+            "div",
+            "archive-empty"
+        );
+
+        empty.append(
+
+            element(
+                "div",
+                "archive-empty-symbol",
+                "◇"
+            ),
+
+            element(
+                "h3",
+                "",
+                heading
+            ),
+
+            element(
+                "p",
+                "",
+                description
+            )
+
+        );
+
+        return empty;
+
+    }
+
+
+    /* ==================================================
+       04 — REUSABLE DIALOG SYSTEM
+       ================================================== */
+
+    function openDialog(
+        title,
+        subtitle = ""
+    ) {
+
+        closeDialog();
+
+        const dialog = element(
+            "dialog",
+            "archive-dialog"
+        );
+
+        dialog.setAttribute(
+            "aria-label",
+            title
+        );
+
+        const inner = element(
+            "div",
+            "archive-dialog-inner"
+        );
+
+        const header = element(
+            "header",
+            "archive-dialog-header"
+        );
+
+        const titleRow = element(
+            "div",
+            "archive-dialog-title-row"
+        );
+
+        const titleContent =
+            element("div");
+
+        if (subtitle) {
+
+            titleContent.append(
+
+                element(
+                    "div",
+                    "archive-eyebrow",
+                    subtitle
+                )
+
+            );
+
+        }
+
+        titleContent.append(
+            element("h2", "", title)
+        );
+
+        titleRow.append(
+
+            titleContent,
+
+            iconButton(
+                "×",
+                "Close",
+                closeDialog
+            )
+
+        );
+
+        header.append(titleRow);
+
+        const body = element(
+            "div",
+            "archive-dialog-body"
+        );
+
+        const footer = element(
+            "footer",
+            "archive-dialog-footer"
+        );
+
+        inner.append(
+            header,
+            body,
+            footer
+        );
+
+        dialog.append(inner);
+
+        document.body.append(dialog);
+
+        state.dialog = dialog;
+
+        dialog.addEventListener(
+            "cancel",
+            event => {
+
+                event.preventDefault();
+
+                closeDialog();
+
+            }
+        );
+
+        dialog.addEventListener(
+            "click",
+            event => {
+
+                if (event.target !== dialog) {
+                    return;
+                }
+
+                const bounds =
+                    dialog.getBoundingClientRect();
+
+                if (
+                    event.clientX < bounds.left ||
+                    event.clientX > bounds.right ||
+                    event.clientY < bounds.top ||
+                    event.clientY > bounds.bottom
+                ) {
+
+                    closeDialog();
+
+                }
+
+            }
+        );
+
+        dialog.showModal();
+
+        return {
+            dialog,
+            header,
+            body,
+            footer
+        };
+
+    }
+
+
+    /* TEXT ENTRY DIALOG */
+
+    function nameDialog({
+        title,
+        value = "",
+        label = "Name",
+        submitText = "Create",
+        onSubmit
+    }) {
+
+        const modal =
+            openDialog(title);
+
+        const form = element("form");
+
+        const fieldLabel = element(
+            "label",
+            "archive-field-label",
+            label
+        );
+
+        const input = element(
+            "input",
+            "archive-field"
+        );
+
+        input.type = "text";
+
+        input.value = value;
+
+        input.maxLength = 250;
+
+        input.required = true;
+
+        input.autocomplete = "off";
+
+        input.placeholder = "Enter a name...";
+
+        fieldLabel.append(input);
+
+        form.append(fieldLabel);
+
+        modal.body.append(form);
+
+        function submit() {
+
+            const name =
+                input.value.trim();
+
+            if (!name) {
+
+                input.focus();
+
+                return;
+
+            }
+
+            safely(() => {
+
+                onSubmit(name);
+
+            });
+
+        }
+
+        form.addEventListener(
+            "submit",
+            event => {
+
+                event.preventDefault();
+
+                submit();
+
+            }
+        );
+
+        modal.footer.append(
+
+            actionButton(
+                "Cancel",
+                closeDialog
+            ),
+
+            actionButton(
+                submitText,
+                submit,
+                "is-primary"
+            )
+
+        );
+
+        input.focus();
+
+        if (value) {
+            input.select();
+        }
+
+    }
+
+
+    /* DESTRUCTIVE ACTION CONFIRMATION */
+
+    function confirmDialog(
+        title,
+        description,
+        onConfirm
+    ) {
+
+        const modal =
+            openDialog(title);
+
+        const message =
+            element("p", "", description);
+
+        message.style.lineHeight = "1.7";
+
+        modal.body.append(message);
+
+        modal.footer.append(
+
+            actionButton(
+                "Cancel",
+                closeDialog
+            ),
+
+            actionButton(
+                "Delete permanently",
+                () => {
+
+                    onConfirm();
+
+                    closeDialog();
+
+                },
+                "is-danger"
+            )
+
+        );
+
+    }
+
+
+    /* ==================================================
+       05 — ARCHIVE PAGE
+       ================================================== */
+
+    function renderArchive(
+        restoreScroll = true
+    ) {
+
+        ensureModule();
+
+        closeDialog();
+
+        state.view = "archive";
+
+        state.articleId = null;
+
+        const container =
+            createPageContainer();
+
+        container.append(
+
+            topbar(
+                "← Aether.",
+                closeArchive,
+                "VOL. I / THE ARCHIVE"
+            )
+
+        );
+
+        const heading = element(
+            "header",
+            "archive-heading"
+        );
+
+        heading.append(
+
+            ornament(),
+
+            element(
+                "h1",
+                "",
+                "The Archive."
+            ),
+
+            element(
+                "p",
+                "",
+                "An anthology of your world"
+            )
+
+        );
+
+        container.append(heading);
+
+
+        /* SEARCH */
+
+        const toolbar = element(
+            "div",
+            "archive-toolbar"
+        );
+
+        const searchBox = element(
+            "div",
+            "archive-search"
+        );
+
+        const searchIcon = element("span");
+
+        searchIcon.innerHTML = `
+
+            <svg
+                width="19"
+                height="19"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                aria-hidden="true"
+            >
+
+                <circle cx="10" cy="10" r="6.5"/>
+
+                <path d="M15 15 L21 21"/>
+
+            </svg>
+
+        `;
+
+        const search = element("input");
+
+        search.type = "search";
+
+        search.placeholder =
+            "Find a category...";
+
+        search.setAttribute(
+            "aria-label",
+            "Find a category"
+        );
+
+        search.value = state.search;
+
+        searchBox.append(
+            searchIcon,
+            search
+        );
+
+        toolbar.append(
+
+            searchBox,
+
+            button(
+                "+",
+                "archive-add-main",
+                () => createCategory(null),
+                "Add category"
+            )
+
+        );
+
+        container.append(toolbar);
+
+
+        /* CATEGORY LIST */
+
+        const list = element(
+            "div",
+            "archive-list"
+        );
+
+        list.id = "archive-category-list";
+
+        container.append(list);
+
+        const footer = element(
+            "footer",
+            "archive-footer"
+        );
+
+        footer.id = "archive-footer";
+
+        container.append(footer);
+
+        search.addEventListener(
+            "input",
+            () => {
+
+                state.search = search.value;
+
+                renderCategoryList();
+
+            }
+        );
+
+        renderCategoryList();
+
+        state.page.scrollTop =
+            restoreScroll
+                ? state.archiveScroll
+                : 0;
+
+    }
+
+
+    /* ==================================================
+       06 — CATEGORY TREE
+       ================================================== */
+
+    function renderCategoryList() {
+
+        const list =
+            state.page?.querySelector(
+                "#archive-category-list"
+            );
+
+        if (!list) return;
+
+        list.replaceChildren();
+
+        const archive = D.read();
+
+        const query =
+            state.search.trim().toLowerCase();
+
+        const expanded = new Set(
+            archive.preferences.expanded
+        );
+
+
+        /* BUILD HIERARCHY INDEX */
+
+        const children = new Map();
+
+        for (
+            const category
+            of archive.categories
+        ) {
+
+            if (
+                !children.has(category.parentId)
+            ) {
+
+                children.set(
+                    category.parentId,
+                    []
+                );
+
+            }
+
+            children.get(category.parentId)
+                .push(category);
+
+        }
+
+
+        /* SEARCH MATCHES */
+
+        const visible = new Set();
+
+        if (query) {
+
+            for (
+                const category
+                of archive.categories
+            ) {
+
+                if (
+                    category.name
+                        .toLowerCase()
+                        .includes(query)
+                ) {
+
+                    D.getPath(category.id)
+                        .forEach(
+                            item =>
+                                visible.add(item.id)
+                        );
+
+                    D.getDescendants(category.id)
+                        .forEach(
+                            id => visible.add(id)
+                        );
+
+                }
+
+            }
+
+        }
+
+
+        /* ARTICLE COUNTS */
+
+        const counts = new Map();
+
+        for (const article of archive.articles) {
+
+            counts.set(
+
+                article.categoryId,
+
+                (
+                    counts.get(article.categoryId)
+                    || 0
+                ) + 1
+
+            );
+
+        }
+
+
+        /* RECURSIVE CATEGORY RENDERER */
+
+        function renderNode(
+            category,
+            depth,
+            rootIndex
+        ) {
+
+            if (
+                query &&
+                !visible.has(category.id)
+            ) return null;
+
+            const node = element(
+
+                "div",
+
+                "archive-category" +
+                (
+                    depth === 0
+                        ? " is-root"
+                        : ""
+                )
+
+            );
+
+            node.dataset.categoryId =
+                category.id;
+
+            const row = element(
+                "div",
+                "archive-category-row"
+            );
+
+            if (depth === 0) {
+
+                row.append(
+
+                    element(
+                        "span",
+                        "archive-category-number",
+                        String(rootIndex + 1)
+                            .padStart(2, "0")
+                    )
+
+                );
+
+            }
+
+            const name = button(
+
+                category.name,
+
+                "archive-category-name",
+
+                () => {
+
+                    state.archiveScroll =
+                        state.page.scrollTop;
+
+                    openCollection(
+                        category.id,
+                        false
+                    );
+
+                }
+
+            );
+
+            row.append(name);
+
+            const count =
+                counts.get(category.id) || 0;
+
+            if (count > 0) {
+
+                row.append(
+
+                    element(
+                        "span",
+                        "archive-category-count",
+                        String(count)
+                    )
+
+                );
+
+            }
+
+            const actions = element(
+                "div",
+                "archive-category-actions"
+            );
+
+            const descendants =
+                children.get(category.id) || [];
+
+            const isExpanded =
+                expanded.has(category.id) ||
+                Boolean(query);
+
+            if (depth === 0) {
+
+                actions.append(
+
+                    iconButton(
+                        "+",
+                        "Add subcategory",
+                        () => createCategory(
+                            category.id
+                        )
+                    )
+
+                );
+
+            }
+
+            actions.append(
+
+                iconButton(
+                    "···",
+                    "Category options",
+                    () => categoryOptions(
+                        category.id
+                    )
+                )
+
+            );
+
+            if (
+                descendants.length ||
+                depth === 0
+            ) {
+
+                const toggle = iconButton(
+
+                    "›",
+
+                    isExpanded
+                        ? "Collapse category"
+                        : "Expand category",
+
+                    () => {
+
+                        if (!descendants.length) {
+
+                            createCategory(
+                                category.id
+                            );
+
+                            return;
+
+                        }
+
+                        D.toggleExpanded(
+                            category.id
+                        );
+
+                        renderCategoryList();
+
+                    }
+
+                );
+
+                toggle.classList.add(
+                    "archive-chevron"
+                );
+
+                toggle.classList.toggle(
+                    "is-open",
+                    isExpanded
+                );
+
+                toggle.setAttribute(
+                    "aria-expanded",
+                    String(
+                        Boolean(
+                            descendants.length &&
+                            isExpanded
+                        )
+                    )
+                );
+
+                actions.append(toggle);
+
+            } else {
+
+                actions.append(
+
+                    iconButton(
+                        "↗",
+                        "Open articles",
+                        () => openCollection(
+                            category.id,
+                            false
+                        )
+                    )
+
+                );
+
+            }
+
+            row.append(actions);
+
+            node.append(row);
+
+
+            /* RENDER CHILDREN */
+
+            if (
+                descendants.length &&
+                isExpanded
+            ) {
+
+                const branch = element(
+                    "div",
+                    "archive-children"
+                );
+
+                descendants.forEach(
+                    child => {
+
+                        const childNode =
+                            renderNode(
+                                child,
+                                depth + 1,
+                                rootIndex
+                            );
+
+                        if (childNode) {
+
+                            branch.append(
+                                childNode
+                            );
+
+                        }
+
+                    }
+                );
+
+                if (branch.childElementCount) {
+
+                    node.append(branch);
+
+                }
+
+            }
+
+            return node;
+
+        }
+
+
+        const roots =
+            children.get(null) || [];
+
+        roots.forEach(
+            (category,index) => {
+
+                const node = renderNode(
+                    category,
+                    0,
+                    index
+                );
+
+                if (node) {
+
+                    list.append(node);
+
+                }
+
+            }
+        );
+
+
+        /* EMPTY ARCHIVE */
+
+        if (!list.childElementCount) {
+
+            list.append(
+
+                query
+
+                    ? emptyState(
+                        "Nothing found.",
+                        "No categories match your search."
+                    )
+
+                    : emptyState(
+                        "An unwritten world.",
+                        "Begin by creating your first category using the plus symbol above."
+                    )
+
+            );
+
+        }
+
+
+        const footer =
+            state.page.querySelector(
+                "#archive-footer"
+            );
+
+        if (footer) {
+
+            footer.textContent =
+
+                archive.categories.length +
+                " CATEGORIES  /  " +
+                archive.articles.length +
+                " ARTICLES";
+
+        }
+
+    }
+
+
+    /* ==================================================
+       07 — CATEGORY CREATION AND OPTIONS
+       ================================================== */
+
+    function createCategory(parentId) {
+
+        nameDialog({
+
+            title:
+                parentId === null
+                    ? "New category."
+                    : "New subcategory.",
+
+            onSubmit(name) {
+
+                D.createCategory(
+                    name,
+                    parentId
+                );
+
+                closeDialog();
+
+                state.search = "";
+
+                state.archiveScroll =
+                    state.page.scrollTop;
+
+                renderArchive();
+
+                A.notify?.(
+                    "Category created",
+                    name
+                );
+
+            }
+
+        });
+
+    }
+
+
+    function categoryOptions(id) {
+
+        const category =
+            D.getCategory(id);
+
+        if (!category) return;
+
+        const modal = openDialog(
+            category.name,
+            "CATEGORY OPTIONS"
+        );
+
+        const actions = element(
+            "div",
+            "archive-action-list"
+        );
+
+        actions.append(
+
+            actionButton(
+                "Rename category",
+                () => {
+
+                    nameDialog({
+
+                        title: "Rename category.",
+
+                        value: category.name,
+
+                        submitText: "Save",
+
+                        onSubmit(name) {
+
+                            D.renameCategory(
+                                id,
+                                name
+                            );
+
+                            closeDialog();
+
+                            renderCategoryList();
+
+                        }
+
+                    });
+
+                }
+            ),
+
+            actionButton(
+                "Add subcategory",
+                () => createCategory(id)
+            ),
+
+            actionButton(
+                "Move to another category",
+                () => moveCategoryDialog(id)
+            ),
+
+            actionButton(
+                "Move up",
+                () => {
+
+                    D.reorderCategory(id, -1);
+
+                    closeDialog();
+
+                    renderCategoryList();
+
+                }
+            ),
+
+            actionButton(
+                "Move down",
+                () => {
+
+                    D.reorderCategory(id, 1);
+
+                    closeDialog();
+
+                    renderCategoryList();
+
+                }
+            ),
+
+            actionButton(
+                "Delete category",
+                () => {
+
+                    const removed =
+                        D.getDescendants(id);
+
+                    const articles =
+                        D.getArticles(
+                            id,
+                            "alphabetical",
+                            true
+                        );
+
+                    confirmDialog(
+
+                        "Delete category?",
+
+                        "This permanently removes " +
+                        removed.size +
+                        " category or subcategories and " +
+                        articles.length +
+                        " articles. Export a backup first if you want to keep them.",
+
+                        () => {
+
+                            D.deleteCategory(id);
+
+                            renderCategoryList();
+
+                        }
+
+                    );
+
+                },
+
+                "is-danger"
+            )
+
+        );
+
+        modal.body.append(actions);
+
+        modal.footer.append(
+
+            actionButton(
+                "Close",
+                closeDialog
+            )
+
+        );
+
+    }
+
+
+    /* CATEGORY MOVEMENT */
+
+    function moveCategoryDialog(id) {
+
+        const category =
+            D.getCategory(id);
+
+        if (!category) return;
+
+        const excluded =
+            D.getDescendants(id);
+
+        const modal = openDialog(
+            "Move category.",
+            category.name
+        );
+
+        const actions = element(
+            "div",
+            "archive-action-list"
+        );
+
+        actions.append(
+
+            actionButton(
+                "Main Archive — no parent",
+                () => {
+
+                    D.moveCategory(id, null);
+
+                    closeDialog();
+
+                    renderCategoryList();
+
+                }
+            )
+
+        );
+
+        for (
+            const target
+            of D.read().categories
+        ) {
+
+            if (excluded.has(target.id)) {
+                continue;
+            }
+
+            const path =
+                D.getPath(target.id)
+                    .map(item => item.name)
+                    .join(" / ");
+
+            actions.append(
+
+                actionButton(
+                    path,
+                    () => {
+
+                        D.moveCategory(
+                            id,
+                            target.id
+                        );
+
+                        closeDialog();
+
+                        renderCategoryList();
+
+                    }
+                )
+
+            );
+
+        }
+
+        modal.body.append(actions);
+
+        modal.footer.append(
+
+            actionButton(
+                "Cancel",
+                closeDialog
+            )
+
+        );
+
+    }
+
+
+    /* ==================================================
+       08 — ARTICLE COLLECTION
+       ================================================== */
+
+    function openCollection(
+        categoryId,
+        includeDescendants = false
+    ) {
+
+        const category =
+            D.getCategory(categoryId);
+
+        if (!category) return;
+
+        if (
+            state.view === "archive" &&
+            state.page
+        ) {
+
+            state.archiveScroll =
+                state.page.scrollTop;
+
+        }
+
+        state.categoryId = categoryId;
+
+        state.includeDescendants =
+            includeDescendants;
+
+        const path =
+            D.getPath(categoryId)
+                .map(item => item.name)
+                .join(" / ");
+
+        const modal = openDialog(
+            category.name + ".",
+            "ARTICLE COLLECTION"
+        );
+
+        modal.header.append(
+
+            element(
+                "div",
+                "archive-profile-breadcrumb",
+                path
+            )
+
+        );
+
+
+        /* SORTING */
+
+        const tools = element(
+            "div",
+            "archive-collection-tools"
+        );
+
+        const select = element(
+            "select",
+            "archive-select"
+        );
+
+        select.setAttribute(
+            "aria-label",
+            "Sort articles"
+        );
+
+        const options = [
+
+            ["alphabetical", "Alphabetical · A–Z"],
+
+            ["created", "Last added"],
+
+            ["edited", "Last edited"]
+
+        ];
+
+        options.forEach(
+            ([value,label]) => {
+
+                const option =
+                    element("option", "", label);
+
+                option.value = value;
+
+                select.append(option);
+
+            }
+        );
+
+        select.value =
+            D.read().preferences.sort;
+
+        tools.append(select);
+
+        tools.append(
+
+            actionButton(
+                "+ New article",
+                () => createArticle(categoryId),
+                "is-primary"
+            )
+
+        );
+
+        modal.header.append(tools);
+
+
+        /* INCLUDE SUBCATEGORY ARTICLES */
+
+        if (
+            D.getChildren(categoryId).length
+        ) {
+
+            const label = element(
+                "label",
+                "archive-profile-breadcrumb"
+            );
+
+            label.style.marginTop = "14px";
+
+            label.style.marginBottom = "0";
+
+            const checkbox =
+                element("input");
+
+            checkbox.type = "checkbox";
+
+            checkbox.checked =
+                includeDescendants;
+
+            checkbox.style.accentColor =
+                "#7baaab";
+
+            label.append(
+
+                checkbox,
+
+                document.createTextNode(
+                    " Include subcategories"
+                )
+
+            );
+
+            modal.header.append(label);
+
+            checkbox.addEventListener(
+                "change",
+                () => {
+
+                    state.includeDescendants =
+                        checkbox.checked;
+
+                    renderArticles();
+
+                }
+            );
+
+        }
+
+
+        /* ARTICLE LIST */
+
+        function renderArticles() {
+
+            modal.body.replaceChildren();
+
+            const articles = D.getArticles(
+
+                categoryId,
+
+                select.value,
+
+                state.includeDescendants
+
+            );
+
+            if (!articles.length) {
+
+                modal.body.append(
+
+                    emptyState(
+                        "No articles yet.",
+                        "Create an article to begin documenting this part of your world."
+                    )
+
+                );
+
+            }
+
+            articles.forEach(
+                article => {
+
+                    const row = button(
+
+                        "",
+
+                        "archive-article-row",
+
+                        () => openArticle(
+                            article.id
+                        ),
+
+                        "Open " + article.name
+
+                    );
+
+                    const content = element(
+                        "div",
+                        "archive-article-row-content"
+                    );
+
+                    content.append(
+
+                        element(
+                            "strong",
+                            "",
+                            article.name
+                        )
+
+                    );
+
+                    if (article.subtitle) {
+
+                        content.append(
+
+                            element(
+                                "small",
+                                "",
+                                article.subtitle
+                            )
+
+                        );
+
+                    }
+
+                    content.append(
+
+                        element(
+                            "small",
+                            "",
+                            "Edited " +
+                            formatDate(
+                                article.updatedAt
+                            )
+                        )
+
+                    );
+
+                    if (
+                        article.categoryId !==
+                        categoryId
+                    ) {
+
+                        content.append(
+
+                            element(
+                                "small",
+                                "",
+                                D.getPath(
+                                    article.categoryId
+                                )
+                                    .map(
+                                        item =>
+                                            item.name
+                                    )
+                                    .join(" / ")
+                            )
+
+                        );
+
+                    }
+
+                    row.append(
+
+                        content,
+
+                        element(
+                            "span",
+                            "",
+                            "↗"
+                        )
+
+                    );
+
+                    modal.body.append(row);
+
+                }
+            );
+
+            count.textContent =
+                articles.length +
+                (
+                    articles.length === 1
+                        ? " article"
+                        : " articles"
+                );
+
+        }
+
+
+        const count = element(
+            "span",
+            "archive-eyebrow"
+        );
+
+        count.style.marginRight = "auto";
+
+        count.style.alignSelf = "center";
+
+        modal.footer.append(
+
+            count,
+
+            actionButton(
+                "Close",
+                closeDialog
+            )
+
+        );
+
+        select.addEventListener(
+            "change",
+            () => safely(() => {
+
+                D.setSort(select.value);
+
+                renderArticles();
+
+            })
+        );
+
+        renderArticles();
+
+    }
+
+
+    /* ==================================================
+       09 — ARTICLE CREATION
+       ================================================== */
+
+    function createArticle(categoryId) {
+
+        nameDialog({
+
+            title: "New article.",
+
+            label: "Article name",
+
+            onSubmit(name) {
+
+                const id =
+                    D.createArticle(
+                        categoryId,
+                        name
+                    );
+
+                closeDialog();
+
+                openArticle(id);
+
+            }
+
+        });
+
+    }
+
+
+    /* ==================================================
+       10 — ARTICLE PROFILE PAGE
+       ================================================== */
+
+    function openArticle(id) {
+
+        closeDialog();
+
+        const article =
+            D.getArticle(id);
+
+        if (!article) {
+
+            renderArchive();
+
+            return;
+
+        }
+
+        state.view = "article";
+
+        state.articleId = id;
+
+        const container =
+            createPageContainer();
+
+        container.classList.add(
+            "archive-profile"
+        );
+
+        container.append(
+
+            topbar(
+
+                "← The Archive",
+
+                () => {
+
+                    A.app.flushSave();
+
+                    const categoryId =
+                        state.categoryId ||
+                        article.categoryId;
+
+                    renderArchive();
+
+                    openCollection(
+
+                        categoryId,
+
+                        state.includeDescendants
+
+                    );
+
+                },
+
+                "VOL. I / ARTICLE"
+
+            )
+
+        );
+
+
+        /* CATEGORY PATH */
+
+        const breadcrumb = element(
+            "div",
+            "archive-profile-breadcrumb",
+            D.getPath(article.categoryId)
+                .map(item => item.name)
+                .join(" / ")
+        );
+
+        container.append(breadcrumb);
+
+
+        /* EDITABLE ARTICLE TITLE */
+
+        const title = element(
+            "textarea",
+            "archive-profile-title"
+        );
+
+        title.rows = 1;
+
+        title.maxLength = 250;
+
+        title.value = article.name;
+
+        title.placeholder =
+            "Article name";
+
+        title.setAttribute(
+            "aria-label",
+            "Article name"
+        );
+
+        title.addEventListener(
+            "input",
+            () => {
+
+                growTextarea(title);
+
+                if (!title.value.trim()) {
+                    return;
+                }
+
+                safely(() => {
+
+                    D.updateArticle(id, {
+                        name: title.value
+                    });
+
+                    updateProfileMeta();
+
+                });
+
+            }
+        );
+
+        title.addEventListener(
+            "blur",
+            () => {
+
+                title.value =
+                    D.getArticle(id)?.name ||
+                    "Untitled";
+
+                growTextarea(title);
+
+            }
+        );
+
+        container.append(title);
+
+
+        /* EDITABLE SUBTITLE */
+
+        const subtitle = element(
+            "input",
+            "archive-profile-subtitle"
+        );
+
+        subtitle.type = "text";
+
+        subtitle.value = article.subtitle;
+
+        subtitle.placeholder =
+            "Optional subtitle or title...";
+
+        subtitle.setAttribute(
+            "aria-label",
+            "Article subtitle"
+        );
+
+        subtitle.addEventListener(
+            "input",
+            () => safely(() => {
+
+                D.updateArticle(id, {
+
+                    subtitle: subtitle.value
+
+                });
+
+                updateProfileMeta();
+
+            })
+        );
+
+        container.append(subtitle);
+
+
+        /* ARTICLE METADATA */
+
+        const meta = element(
+            "div",
+            "archive-profile-meta"
+        );
+
+        const date = element("span");
+
+        date.id = "archive-profile-date";
+
+        meta.append(
+
+            date,
+
+            iconButton(
+                "···",
+                "Article options",
+                () => articleOptions(id)
+            )
+
+        );
+
+        container.append(meta);
+
+
+        /* CONTENT BLOCKS */
+
+        const blocks = element(
+            "div",
+            "archive-profile-blocks"
+        );
+
+        blocks.id = "archive-profile-blocks";
+
+        container.append(blocks);
+
+
+        /* ADD CONTENT */
+
+        container.append(
+
+            button(
+                "+ Add content block",
+                "archive-add-block",
+                () => blockPicker(id)
+            )
+
+        );
+
+        updateProfileMeta();
+
+        renderBlocks();
+
+        state.page.scrollTop = 0;
+
+        requestAnimationFrame(
+            growAllTextareas
+        );
+
+    }
+
+
+    function updateProfileMeta() {
+
+        const article =
+            D.getArticle(state.articleId);
+
+        const date =
+            state.page?.querySelector(
+                "#archive-profile-date"
+            );
+
+        if (!article || !date) return;
+
+        date.textContent =
+
+            "Edited " +
+
+            formatDate(
+                article.updatedAt
+            );
+
+    }
+
+
+    /* ==================================================
+       11 — CONTENT BLOCK EDITOR
+       ================================================== */
+
+    function renderBlocks() {
+
+        const article =
+            D.getArticle(state.articleId);
+
+        const container =
+            state.page?.querySelector(
+                "#archive-profile-blocks"
+            );
+
+        if (!article || !container) return;
+
+        container.replaceChildren();
+
+        article.blocks.forEach(
+            (block,index) => {
+
+                container.append(
+
+                    renderBlock(
+                        article.id,
+                        block,
+                        index,
+                        article.blocks.length
+                    )
+
+                );
+
+            }
+        );
+
+        requestAnimationFrame(
+            growAllTextareas
+        );
+
+    }
+
+
+    function renderBlock(
+        articleId,
+        block,
+        index,
+        total
+    ) {
+
+        const node = element(
+
+            "section",
+
+            "archive-block is-" + block.type
+
+        );
+
+        node.dataset.blockId = block.id;
+
+
+        /* BLOCK CONTROLS */
+
+        const toolbar = element(
+            "div",
+            "archive-block-toolbar"
+        );
+
+        const up = iconButton(
+
+            "↑",
+
+            "Move block up",
+
+            () => {
+
+                D.moveBlock(
+                    articleId,
+                    block.id,
+                    -1
+                );
+
+                renderBlocks();
+
+                updateProfileMeta();
+
+            }
+
+        );
+
+        up.disabled = index === 0;
+
+        const down = iconButton(
+
+            "↓",
+
+            "Move block down",
+
+            () => {
+
+                D.moveBlock(
+                    articleId,
+                    block.id,
+                    1
+                );
+
+                renderBlocks();
+
+                updateProfileMeta();
+
+            }
+
+        );
+
+        down.disabled =
+            index === total - 1;
+
+        toolbar.append(
+
+            up,
+
+            down,
+
+            iconButton(
+
+                "×",
+
+                "Delete content block",
+
+                () => {
+
+                    confirmDialog(
+
+                        "Remove block?",
+
+                        "This content block and its text will be permanently removed.",
+
+                        () => {
+
+                            D.deleteBlock(
+                                articleId,
+                                block.id
+                            );
+
+                            renderBlocks();
+
+                            updateProfileMeta();
+
+                        }
+
+                    );
+
+                }
+
+            )
+
+        );
+
+        node.append(toolbar);
+
+
+        /* DIVIDER BLOCK */
+
+        if (block.type === "divider") {
+
+            node.append(
+
+                element(
+                    "div",
+                    "archive-block-divider"
+                )
+
+            );
+
+            return node;
+
+        }
+
+
+        /* TEXT EDITOR FACTORY */
+
+        function editor(
+            key,
+            placeholder
+        ) {
+
+            const textarea =
+                element("textarea");
+
+            textarea.rows = 1;
+
+            textarea.value = block[key];
+
+            textarea.placeholder =
+                placeholder;
+
+            textarea.setAttribute(
+                "aria-label",
+                placeholder
+            );
+
+            textarea.addEventListener(
+                "input",
+                () => {
+
+                    growTextarea(textarea);
+
+                    safely(() => {
+
+                        D.updateBlock(
+
+                            articleId,
+
+                            block.id,
+
+                            {
+                                [key]:
+                                    textarea.value
+                            }
+
+                        );
+
+                        updateProfileMeta();
+
+                    });
+
+                }
+            );
+
+            return textarea;
+
+        }
+
+
+        /* INFORMATION ROW */
+
+        if (block.type === "information") {
+
+            const grid = element(
+                "div",
+                "archive-information-grid"
+            );
+
+            grid.append(
+
+                editor(
+                    "label",
+                    "Information label"
+                ),
+
+                editor(
+                    "text",
+                    "Information value"
+                )
+
+            );
+
+            node.append(grid);
+
+            return node;
+
+        }
+
+
+        /* STANDARD CONTENT */
+
+        const placeholders = {
+
+            heading: "Headline",
+
+            subheading: "Subheading",
+
+            text: "Write something...",
+
+            quote: "Quotation..."
+
+        };
+
+        node.append(
+
+            editor(
+
+                "text",
+
+                placeholders[block.type] ||
+                    "Content"
+
+            )
+
+        );
+
+        return node;
+
+    }
+
+
+    /* ==================================================
+       12 — CONTENT BLOCK PICKER
+       ================================================== */
+
+    function blockPicker(articleId) {
+
+        const modal = openDialog(
+            "Add content.",
+            "ARTICLE STRUCTURE"
+        );
+
+        const actions = element(
+            "div",
+            "archive-action-list"
+        );
+
+        const types = [
+
+            ["heading", "H1  —  Headline"],
+
+            ["subheading", "H2  —  Subheading"],
+
+            ["text", "¶  —  Paragraph"],
+
+            ["information", "≡  —  Information row"],
+
+            ["quote", "“ ”  —  Quotation"],
+
+            ["divider", "◇  —  Ornamental divider"]
+
+        ];
+
+        types.forEach(
+            ([type,label]) => {
+
+                actions.append(
+
+                    actionButton(
+
+                        label,
+
+                        () => {
+
+                            const id =
+                                D.addBlock(
+                                    articleId,
+                                    type
+                                );
+
+                            closeDialog();
+
+                            renderBlocks();
+
+                            updateProfileMeta();
+
+                            requestAnimationFrame(
+                                () => {
+
+                                    const blocks =
+                                        state.page
+                                            ?.querySelectorAll(
+                                                "[data-block-id]"
+                                            );
+
+                                    const node =
+                                        Array.from(
+                                            blocks || []
+                                        ).find(
+                                            item =>
+                                                item.dataset
+                                                    .blockId
+                                                === id
+                                        );
+
+                                    if (!node) return;
+
+                                    node.scrollIntoView({
+                                        block: "center"
+                                    });
+
+                                    node
+                                        .querySelector(
+                                            "textarea"
+                                        )
+                                        ?.focus();
+
+                                }
+                            );
+
+                        }
+
+                    )
+
+                );
+
+            }
+        );
+
+        modal.body.append(actions);
+
+        modal.footer.append(
+
+            actionButton(
+                "Cancel",
+                closeDialog
+            )
+
+        );
+
+    }
+
+
+    /* ==================================================
+       13 — ARTICLE OPTIONS
+       ================================================== */
+
+    function articleOptions(id) {
+
+        const article =
+            D.getArticle(id);
+
+        if (!article) return;
+
+        const modal = openDialog(
+            article.name,
+            "ARTICLE OPTIONS"
+        );
+
+        const actions = element(
+            "div",
+            "archive-action-list"
+        );
+
+        actions.append(
+
+            actionButton(
+
+                "Move to another category",
+
+                () => moveArticleDialog(id)
+
+            ),
+
+            actionButton(
+
+                "Save now",
+
+                () => {
+
+                    A.app.save({
+                        silent: false
+                    });
+
+                    closeDialog();
+
+                }
+
+            ),
+
+            actionButton(
+
+                "Delete article",
+
+                () => {
+
+                    confirmDialog(
+
+                        "Delete article?",
+
+                        "The article and all of its content will be permanently removed.",
+
+                        () => {
+
+                            const categoryId =
+                                article.categoryId;
+
+                            D.deleteArticle(id);
+
+                            renderArchive();
+
+                            openCollection(
+                                categoryId,
+                                false
+                            );
+
+                        }
+
+                    );
+
+                },
+
+                "is-danger"
+
+            )
+
+        );
+
+        modal.body.append(actions);
+
+        modal.body.append(
+
+            element(
+                "p",
+                "archive-eyebrow",
+                "Created " +
+                formatDate(article.createdAt)
+            )
+
+        );
+
+        modal.footer.append(
+
+            actionButton(
+                "Close",
+                closeDialog
+            )
+
+        );
+
+    }
+
+
+    /* MOVE ARTICLE */
+
+    function moveArticleDialog(id) {
+
+        const article =
+            D.getArticle(id);
+
+        if (!article) return;
+
+        const modal = openDialog(
+            "Move article.",
+            article.name
+        );
+
+        const actions = element(
+            "div",
+            "archive-action-list"
+        );
+
+        D.read().categories.forEach(
+            category => {
+
+                const path =
+                    D.getPath(category.id)
+                        .map(item => item.name)
+                        .join(" / ");
+
+                const target = actionButton(
+
+                    path,
+
+                    () => {
+
+                        D.updateArticle(id, {
+
+                            categoryId:
+                                category.id
+
+                        });
+
+                        state.categoryId =
+                            category.id;
+
+                        state.includeDescendants =
+                            false;
+
+                        closeDialog();
+
+                        openArticle(id);
+
+                    }
+
+                );
+
+                target.disabled =
+                    category.id ===
+                    article.categoryId;
+
+                actions.append(target);
+
+            }
+        );
+
+        modal.body.append(actions);
+
+        modal.footer.append(
+
+            actionButton(
+                "Cancel",
+                closeDialog
+            )
+
+        );
+
+    }
+
+
+    /* ==================================================
+       14 — PUBLIC ARCHIVE INTERFACE
+       ================================================== */
+
+    A.archiveUI = {
+
+        open() {
+
+            ensureModule();
+
+            state.search = "";
+
+            state.archiveScroll = 0;
+
+            renderArchive(false);
+
+        },
+
+        close: closeArchive,
+
+        openArticle,
+
+        openCollection,
+
+        refresh() {
+
+            if (!state.page) return;
+
+            if (
+                state.view === "article" &&
+                D.getArticle(state.articleId)
+            ) {
+
+                openArticle(
+                    state.articleId
+                );
+
+            } else {
+
+                renderArchive();
+
+            }
+
+        }
+
+    };
+
+
+    /* ==================================================
+       15 — MAIN MENU INTEGRATION
+       ================================================== */
+
+    A.app.registerAction(
+
+        "archive",
+
+        () => A.archiveUI.open()
+
+    );
+
+
+    /*
+       Close the independent Archive layer
+       when the central database is replaced
+       through the import system.
+    */
+
+    if (typeof A.app.on === "function") {
+
+        A.app.on(
+
+            "database:replaced",
+
+            () => {
+
+                closeDialog();
+
+                state.page?.remove();
+
+                state.page = null;
+
+                state.articleId = null;
+
+                state.categoryId = null;
+
+                state.search = "";
+
+                state.archiveScroll = 0;
+
+            }
+
+        );
+
+    }
+
+
+    /* KEEP TEXTAREAS RESPONSIVE */
+
+    window.addEventListener(
+
+        "resize",
+
+        () => {
+
+            if (state.view === "article") {
+
+                growAllTextareas();
+
+            }
+
+        }
+
+    );
+
+
+})();
+
+
+/* ==================================================
+   END V2.0 — WORLD ARCHIVE APPLICATION
+
+   Public interfaces:
+
+   Aether.archiveUI.open()
+   Aether.archiveUI.close()
+   Aether.archiveUI.openArticle(id)
+   Aether.archiveUI.openCollection(id)
+   Aether.archiveUI.refresh()
+
+   Future application modules may be appended
+   below this point.
+
+   ================================================== */
