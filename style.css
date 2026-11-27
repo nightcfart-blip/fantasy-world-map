@@ -938,3 +938,248 @@ button:focus-visible {
    Append new page and feature styles below.
    Keep main-menu styles scoped to their own classes.
    ================================================== */
+
+
+/* ==================================================
+   V1.2 — PERSISTENCE & NOTIFICATIONS
+   ================================================== */
+
+#notification-root {
+
+    position: fixed;
+
+    left: 50%;
+
+    bottom: max(
+        24px,
+        calc(env(safe-area-inset-bottom) + 16px)
+    );
+
+    transform: translateX(-50%);
+
+    width: min(
+        calc(100% - 36px),
+        420px
+    );
+
+    z-index: 9999;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    pointer-events: none;
+}
+
+
+/* NOTIFICATION */
+
+.aether-notification {
+
+    position: relative;
+
+    display: flex;
+    align-items: center;
+
+    gap: 14px;
+
+    padding: 15px 18px;
+
+    overflow: hidden;
+
+    border: 1px solid
+        rgba(230, 189, 139, .35);
+
+    background:
+
+        linear-gradient(
+            115deg,
+            rgba(39, 96, 108, .45),
+            rgba(15, 18, 23, .97)
+        );
+
+    backdrop-filter: blur(20px);
+
+    -webkit-backdrop-filter: blur(20px);
+
+    box-shadow:
+        0 8px 35px rgba(0, 0, 0, .45),
+        inset 0 1px 0 rgba(230, 189, 139, .08);
+
+    animation:
+        notification-enter
+        .5s
+        var(--ease)
+        both;
+}
+
+
+/* ORNAMENTAL INDICATOR */
+
+.notification-symbol {
+
+    flex-shrink: 0;
+
+    width: 12px;
+    height: 12px;
+
+    transform: rotate(45deg);
+
+    border: 1px solid var(--gold);
+
+    box-shadow:
+        0 0 12px rgba(230, 189, 139, .2);
+}
+
+.notification-content {
+
+    min-width: 0;
+
+    flex: 1;
+}
+
+.notification-title {
+
+    margin: 0 0 3px;
+
+    font-family: var(--font-display);
+
+    font-size: 23px;
+
+    font-weight: 500;
+
+    line-height: 1;
+
+    color: var(--gold);
+}
+
+.notification-message {
+
+    margin: 0;
+
+    font-family: var(--font-body);
+
+    font-size: 11px;
+
+    line-height: 1.5;
+
+    color: var(--ivory);
+
+    overflow-wrap: anywhere;
+}
+
+
+/* ERROR VARIATION */
+
+.aether-notification.is-error {
+
+    border-color:
+        rgba(198, 141, 93, .65);
+
+    background:
+
+        linear-gradient(
+            115deg,
+            rgba(100, 48, 38, .65),
+            rgba(15, 18, 23, .97)
+        );
+}
+
+.is-error .notification-symbol {
+
+    border-color: #d99b80;
+}
+
+
+/* DISAPPEARING NOTIFICATION */
+
+.aether-notification.is-leaving {
+
+    animation:
+        notification-leave
+        .4s
+        var(--ease)
+        both;
+}
+
+@keyframes notification-enter {
+
+    from {
+
+        opacity: 0;
+
+        transform: translateY(14px);
+
+    }
+
+    to {
+
+        opacity: 1;
+
+        transform: translateY(0);
+
+    }
+}
+
+@keyframes notification-leave {
+
+    from {
+
+        opacity: 1;
+
+        transform: translateY(0);
+
+    }
+
+    to {
+
+        opacity: 0;
+
+        transform: translateY(8px);
+
+    }
+}
+
+
+/* ACTIVE MENU BUTTONS */
+
+.menu-panel[aria-disabled="false"] {
+
+    cursor: pointer;
+}
+
+
+/* NATIVE FILE PICKER */
+
+.aether-file-input {
+
+    position: fixed;
+
+    width: 1px;
+    height: 1px;
+
+    opacity: 0;
+
+    overflow: hidden;
+
+    pointer-events: none;
+}
+
+
+/* REDUCED MOTION */
+
+@media (prefers-reduced-motion: reduce) {
+
+    .aether-notification,
+    .aether-notification.is-leaving {
+
+        animation: none;
+
+    }
+
+}
+
+
+/* ==================================================
+   END V1.2 — STYLES
+   ================================================== */
