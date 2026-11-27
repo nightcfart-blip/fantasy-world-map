@@ -1794,3 +1794,1153 @@
    are required to activate the archive.
 
    ================================================== */
+
+
+/* ==================================================
+   V1.2 — IMPORT, EXPORT & AUTOSAVE
+   ================================================== */
+
+(() => {
+
+    "use strict";
+
+    const A = window.Aether;
+
+
+    /* ==================================================
+       01 — NOTIFICATION SYSTEM
+       ================================================== */
+
+    A.notify = function (
+
+        title,
+        message = "",
+        type = "success",
+        duration = 3500
+
+    ) {
+
+        const root =
+            document.getElementById(
+                "notification-root"
+            );
+
+        if (!root) return;
+
+        /*
+           Only one notification is shown
+           at a time.
+        */
+
+        root.replaceChildren();
+
+
+        const notification =
+            document.createElement("div");
+
+        notification.className =
+            "aether-notification";
+
+        if (type === "error") {
+
+            notification.classList.add(
+                "is-error"
+            );
+
+        }
+
+
+        const symbol =
+            document.createElement("span");
+
+        symbol.className =
+            "notification-symbol";
+
+        symbol.setAttribute(
+            "aria-hidden",
+            "true"
+        );
+
+
+        const content =
+            document.createElement("div");
+
+        content.className =
+            "notification-content";
+
+
+        const heading =
+            document.createElement("p");
+
+        heading.className =
+            "notification-title";
+
+        heading.textContent = title;
+
+
+        const description =
+            document.createElement("p");
+
+        description.className =
+            "notification-message";
+
+        description.textContent = message;
+
+
+        content.append(
+            heading,
+            description
+        );
+
+        notification.append(
+            symbol,
+            content
+        );
+
+        root.append(notification);
+
+
+        setTimeout(() => {
+
+            notification.classList.add(
+                "is-leaving"
+            );
+
+            setTimeout(() => {
+
+                notification.remove();
+
+            }, 450);
+
+        }, duration);
+
+    };
+
+
+    /* ==================================================
+       02 — CENTRALIZED SAVE SYSTEM
+       ================================================== */
+
+    let saveTimer = null;
+
+    let dirty = false;
+
+    let storageProtected = false;
+
+    let importInProgress = false;
+
+
+    A.app.save = function (
+        options = {}
+    ) {
+
+        const silent =
+            options.silent !== false;
+
+        clearTimeout(saveTimer);
+
+        saveTimer = null;
+
+
+        if (!this.database) {
+
+            return false;
+
+        }
+
+
+        /*
+           If an existing database failed to load,
+           do not overwrite it automatically.
+        */
+
+        if (storageProtected) {
+
+            if (!silent) {
+
+                A.notify(
+
+                    "Storage protected",
+
+                    "The previous database could not be loaded. Restore a valid backup first.",
+
+                    "error",
+
+                    6000
+
+                );
+
+            }
+
+            return false;
+
+        }
+
+
+        try {
+
+            const saved =
+                A.storage.save(
+                    this.database
+                );
+
+            /*
+               Keep the current database reference
+               intact during ordinary saves.
+            */
+
+            this.database.metadata.updatedAt =
+                saved.metadata.updatedAt;
+
+            this.database.appVersion =
+                saved.appVersion;
+
+            dirty = false;
+
+
+            this.emit(
+
+                "database:saved",
+
+                this.database
+
+            );
+
+
+            if (!silent) {
+
+                A.notify(
+
+                    "Preserved",
+
+                    "Your world has been saved locally."
+
+                );
+
+            }
+
+            return true;
+
+        } catch (error) {
+
+            console.error(
+                "Aether save error:",
+                error
+            );
+
+            dirty = true;
+
+            A.notify(
+
+                "Unable to save",
+
+                "Local storage may be full or unavailable. Export a backup to preserve your work.",
+
+                "error",
+
+                6500
+
+            );
+
+            return false;
+
+        }
+
+    };
+
+
+    /* ==================================================
+       03 — AUTOMATIC SAVING
+
+       Future modules call markDirty()
+       after modifying the database.
+       ================================================== */
+
+    A.app.markDirty = function () {
+
+        dirty = true;
+
+        clearTimeout(saveTimer);
+
+        saveTimer = setTimeout(() => {
+
+            this.save({
+
+                silent: true
+
+            });
+
+        }, 400);
+
+        this.emit(
+
+            "database:changed",
+
+            this.database
+
+        );
+
+    };
+
+
+    A.app.isDirty = function () {
+
+        return dirty;
+
+    };
+
+
+    A.app.flushSave = function () {
+
+        if (!dirty) {
+
+            return true;
+
+        }
+
+        return this.save({
+
+            silent: true
+
+        });
+
+    };
+
+
+    /* ==================================================
+       04 — DATABASE MODULE ACCESS
+       ================================================== */
+
+    A.app.getModule = function (name) {
+
+        if (!this.database) {
+
+            throw new Error(
+                "The database has not been initialized."
+            );
+
+        }
+
+        if (
+            !Object.prototype.hasOwnProperty.call(
+                this.database.modules,
+                name
+            )
+        ) {
+
+            throw new Error(
+                "Unknown database module: " + name
+            );
+
+        }
+
+        return this.database.modules[name];
+
+    };
+
+
+    /*
+       A safe centralized way for future
+       modules to modify their data.
+    */
+
+    A.app.updateModule = function (
+
+        name,
+        updater
+
+    ) {
+
+        if (
+            typeof updater !== "function"
+        ) {
+
+            throw new Error(
+                "A module updater must be a function."
+            );
+
+        }
+
+        const current =
+            this.getModule(name);
+
+        const draft =
+            A.utils.clone(current);
+
+        const result =
+            updater(draft);
+
+        if (
+            result &&
+            typeof result.then === "function"
+        ) {
+
+            throw new Error(
+                "Module updates must be synchronous."
+            );
+
+        }
+
+        const next =
+
+            result === undefined
+
+                ? draft
+
+                : result;
+
+
+        const candidate =
+            A.utils.clone(
+                this.database
+            );
+
+        candidate.modules[name] = next;
+
+        A.data.validate(candidate);
+
+        A.data.validateModules(candidate);
+
+
+        this.database.modules[name] =
+            next;
+
+        this.markDirty();
+
+        return next;
+
+    };
+
+
+    /* ==================================================
+       05 — EXPORT
+
+       Direct JSON download.
+       No new page or custom dialog.
+       ================================================== */
+
+    A.app.exportDatabase = function () {
+
+        if (!this.database) {
+
+            A.notify(
+
+                "Nothing to preserve",
+
+                "No world database is currently loaded.",
+
+                "error"
+
+            );
+
+            return false;
+
+        }
+
+
+        try {
+
+            /*
+               Attempt to save pending changes.
+
+               Even if local storage is unavailable,
+               exporting can still preserve the
+               current in-memory database.
+            */
+
+            this.flushSave();
+
+
+            const serialized =
+                A.data.serialize(
+                    this.database
+                );
+
+
+            const filename =
+                A.data.backupFilename(
+                    this.database
+                );
+
+
+            const blob = new Blob(
+
+                [serialized],
+
+                {
+
+                    type:
+                        "application/json;charset=utf-8"
+
+                }
+
+            );
+
+
+            const url =
+                URL.createObjectURL(blob);
+
+
+            const link =
+                document.createElement("a");
+
+            link.href = url;
+
+            link.download = filename;
+
+            link.style.display = "none";
+
+
+            document.body.append(link);
+
+            link.click();
+
+            link.remove();
+
+
+            /*
+               Delay URL cleanup for mobile browsers.
+            */
+
+            setTimeout(() => {
+
+                URL.revokeObjectURL(url);
+
+            }, 60000);
+
+
+            A.notify(
+
+                "Backup prepared",
+
+                "Your world has been exported as a JSON file."
+
+            );
+
+
+            this.emit(
+
+                "database:exported",
+
+                {
+
+                    filename,
+
+                    exportedAt:
+                        A.utils.now()
+
+                }
+
+            );
+
+            return true;
+
+        } catch (error) {
+
+            console.error(
+                "Aether export error:",
+                error
+            );
+
+            A.notify(
+
+                "Export failed",
+
+                error.message ||
+                "The backup could not be created.",
+
+                "error",
+
+                5500
+
+            );
+
+            return false;
+
+        }
+
+    };
+
+
+    /* ==================================================
+       06 — IMPORT
+
+       Validate first.
+       Preserve previous database.
+       Replace only after successful storage.
+       ================================================== */
+
+    A.app.importDatabase = async function (
+        file
+    ) {
+
+        if (!file) return false;
+
+        if (importInProgress) {
+
+            return false;
+
+        }
+
+        importInProgress = true;
+
+
+        try {
+
+            /*
+               Basic protection against
+               accidentally selecting huge files.
+            */
+
+            const MAX_FILE_SIZE =
+                50 * 1024 * 1024;
+
+            if (
+                file.size > MAX_FILE_SIZE
+            ) {
+
+                throw new Error(
+
+                    "The selected backup exceeds the 50 MB import limit."
+
+                );
+
+            }
+
+
+            /* READ FILE */
+
+            const text =
+                await file.text();
+
+
+            /* VALIDATE AND MIGRATE */
+
+            const imported =
+                A.data.deserialize(text);
+
+
+            /*
+               All validation happens before
+               modifying the current database.
+            */
+
+
+            /* PRESERVE CURRENT DATABASE */
+
+            if (storageProtected) {
+
+                /*
+                   Keep the original unreadable
+                   database as a raw recovery copy.
+                */
+
+                const original =
+                    localStorage.getItem(
+                        A.config.storageKey
+                    );
+
+                if (original !== null) {
+
+                    localStorage.setItem(
+
+                        A.config.storageKey +
+                        "-recovery",
+
+                        original
+
+                    );
+
+                }
+
+            } else if (this.database) {
+
+                A.storage.createRecovery(
+                    this.database
+                );
+
+            }
+
+
+            /* SAVE IMPORTED DATABASE */
+
+            const saved =
+                A.storage.save(imported);
+
+
+            /*
+               The import has now been validated
+               and successfully persisted.
+            */
+
+            clearTimeout(saveTimer);
+
+            saveTimer = null;
+
+            dirty = false;
+
+            storageProtected = false;
+
+            this.database = saved;
+
+
+        } catch (error) {
+
+            console.error(
+                "Aether import error:",
+                error
+            );
+
+            A.notify(
+
+                "Restore failed",
+
+                error.message ||
+                "The selected database could not be restored.",
+
+                "error",
+
+                6500
+
+            );
+
+            importInProgress = false;
+
+            return false;
+
+        }
+
+
+        importInProgress = false;
+
+
+        /*
+           Notify future modules that the entire
+           database has been replaced.
+        */
+
+        try {
+
+            this.emit(
+
+                "database:replaced",
+
+                this.database
+
+            );
+
+            this.navigate("menu");
+
+        } catch (error) {
+
+            console.error(
+
+                "Database restored, but interface refresh failed:",
+
+                error
+
+            );
+
+            A.notify(
+
+                "World restored",
+
+                "The database was saved. Reload the page to refresh the interface.",
+
+                "success",
+
+                5500
+
+            );
+
+            return true;
+
+        }
+
+
+        A.notify(
+
+            "World restored",
+
+            this.database.metadata.name +
+            " has been successfully restored."
+
+        );
+
+        return true;
+
+    };
+
+
+    /* ==================================================
+       07 — NATIVE FILE PICKER
+       ================================================== */
+
+    let fileInput = null;
+
+
+    function createFileInput() {
+
+        if (fileInput) {
+
+            return fileInput;
+
+        }
+
+
+        fileInput =
+            document.createElement("input");
+
+        fileInput.type = "file";
+
+        fileInput.accept =
+            ".json,application/json";
+
+        fileInput.multiple = false;
+
+        fileInput.className =
+            "aether-file-input";
+
+        fileInput.tabIndex = -1;
+
+        fileInput.setAttribute(
+
+            "aria-hidden",
+
+            "true"
+
+        );
+
+
+        fileInput.addEventListener(
+
+            "change",
+
+            async () => {
+
+                const file =
+                    fileInput.files?.[0];
+
+                /*
+                   Reset selection so the same
+                   file can be selected again.
+                */
+
+                fileInput.value = "";
+
+                if (!file) return;
+
+                await A.app.importDatabase(
+                    file
+                );
+
+            }
+
+        );
+
+
+        document.body.append(
+            fileInput
+        );
+
+        return fileInput;
+
+    }
+
+
+    A.app.openImportPicker = function () {
+
+        if (importInProgress) return;
+
+        const input =
+            createFileInput();
+
+        input.value = "";
+
+        /*
+           This is called directly from the
+           user's button click, maintaining
+           mobile browser user activation.
+        */
+
+        input.click();
+
+    };
+
+
+    /* ==================================================
+       08 — REGISTER MENU ACTIONS
+
+       No modifications to the original
+       menu renderer are necessary.
+       ================================================== */
+
+    A.app.registerAction(
+
+        "export",
+
+        () => {
+
+            A.app.exportDatabase();
+
+        }
+
+    );
+
+
+    A.app.registerAction(
+
+        "import",
+
+        () => {
+
+            A.app.openImportPicker();
+
+        }
+
+    );
+
+
+    /* ==================================================
+       09 — RECOVERY FOUNDATION
+
+       Reserved for a future recovery/settings
+       interface. No additional menu button yet.
+       ================================================== */
+
+    A.app.restoreRecovery = function () {
+
+        try {
+
+            const recovery =
+                A.storage.loadRecovery();
+
+            if (!recovery) {
+
+                throw new Error(
+                    "No recovery copy is available."
+                );
+
+            }
+
+            const saved =
+                A.storage.save(recovery);
+
+            clearTimeout(saveTimer);
+
+            saveTimer = null;
+
+            this.database = saved;
+
+            storageProtected = false;
+
+            dirty = false;
+
+        } catch (error) {
+
+            A.notify(
+
+                "Recovery failed",
+
+                error.message,
+
+                "error"
+
+            );
+
+            return false;
+
+        }
+
+        this.emit(
+
+            "database:replaced",
+
+            this.database
+
+        );
+
+        this.navigate("menu");
+
+        A.notify(
+
+            "World recovered",
+
+            "The previous database has been restored."
+
+        );
+
+        return true;
+
+    };
+
+
+    /* ==================================================
+       10 — EXTENDED APPLICATION STARTUP
+
+       Replaces the behavior of the original
+       start() function without editing it.
+       ================================================== */
+
+    A.app.start = function () {
+
+        let startupError = null;
+
+
+        try {
+
+            const existing =
+                A.storage.load();
+
+            if (existing) {
+
+                this.database = existing;
+
+            } else {
+
+                this.database =
+                    A.data.create();
+
+            }
+
+        } catch (error) {
+
+            console.error(
+
+                "Aether startup storage error:",
+
+                error
+
+            );
+
+            /*
+               Do not destroy an unreadable
+               existing database.
+            */
+
+            storageProtected = true;
+
+            this.database =
+                A.data.create();
+
+            startupError = error;
+
+        }
+
+
+        this.navigate("menu");
+
+
+        if (startupError) {
+
+            A.notify(
+
+                "Storage unavailable",
+
+                "The existing database could not be loaded. Restore a valid backup before saving.",
+
+                "error",
+
+                7000
+
+            );
+
+        } else {
+
+            /*
+               Persist the initialized database,
+               including any newly registered modules.
+            */
+
+            this.save({
+
+                silent: true
+
+            });
+
+        }
+
+
+        this.emit(
+
+            "database:ready",
+
+            this.database
+
+        );
+
+    };
+
+
+    /* ==================================================
+       11 — MOBILE LIFECYCLE SAVING
+
+       Save pending changes when the user
+       switches apps or leaves the website.
+       ================================================== */
+
+    document.addEventListener(
+
+        "visibilitychange",
+
+        () => {
+
+            if (
+                document.visibilityState === "hidden"
+            ) {
+
+                A.app.flushSave();
+
+            }
+
+        }
+
+    );
+
+
+    window.addEventListener(
+
+        "pagehide",
+
+        () => {
+
+            A.app.flushSave();
+
+        }
+
+    );
+
+
+})();
+
+
+/* ==================================================
+   END V1.2 — IMPORT, EXPORT & AUTOSAVE
+
+   Append future application modules below.
+
+   Available interfaces:
+
+   Aether.app.save()
+   Aether.app.markDirty()
+   Aether.app.flushSave()
+
+   Aether.app.getModule(name)
+   Aether.app.updateModule(name, updater)
+
+   Aether.app.exportDatabase()
+   Aether.app.importDatabase(file)
+
+   Aether.app.restoreRecovery()
+
+   Aether.notify(title, message, type)
+
+   Database events:
+
+   database:ready
+   database:changed
+   database:saved
+   database:replaced
+   database:exported
+
+   ================================================== */
