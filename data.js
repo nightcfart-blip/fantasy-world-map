@@ -1,910 +1,20 @@
-
 /* ==================================================
-   AETHER
-   DATA FOUNDATION
-   V1.1
+   AETHER — V2.1
+   CONSOLIDATED DATA FOUNDATION
    ================================================== */
 
 (() => {
 
     "use strict";
 
-    const Aether = window.Aether =
-        window.Aether || {};
-
-    const migrations = new Map();
+    const A = window.Aether = window.Aether || {};
 
     const extensions = new Map();
-
-
-    /* 01 — APPLICATION CONFIGURATION */
-
-    Aether.config = {
-
-        name: "Aether",
-
-        version: "1.1",
-
-        schemaVersion: 1,
-
-        storageKey: "aether-worldbuilding",
-
-        subtitle: "A world in the making",
-
-        footer: "Every world begins somewhere",
-
-        edition: "Vol. I"
-
-    };
-
-
-    /* 02 — COLOUR PALETTE */
-
-    Aether.palette = {
-
-        ink: "#0f1217",
-
-        ocean: "#27606c",
-
-        aqua: "#7baaab",
-
-        shell: "#c68d5d",
-
-        gold: "#e6bd8b",
-
-        ivory: "#eee5d6",
-
-        midnight: "#102435",
-
-        deepOcean: "#17434f",
-
-        paleAqua: "#b9d7d3"
-
-    };
-
-
-    /* 03 — MENU CONFIGURATION */
-
-    Aether.menu = [
-
-        {
-
-            id: "archive",
-
-            index: "01",
-
-            category: "The Compendium",
-
-            title: "World",
-
-            italicTitle: "Archive.",
-
-            description:
-                "The fragments of an unwritten universe.",
-
-            className: "panel-hero",
-
-            enabled: false
-
-        },
-
-        {
-
-            id: "collections",
-
-            index: "02",
-
-            category: "Curate",
-
-            title: "Collections",
-
-            description: "Gather the fragments.",
-
-            className: "panel-collections",
-
-            enabled: false
-
-        },
-
-        {
-
-            id: "export",
-
-            index: "03",
-
-            category: "Save",
-
-            title: "Preserve",
-
-            description: "Keep what was created.",
-
-            className: "panel-export",
-
-            enabled: false
-
-        },
-
-        {
-
-            id: "import",
-
-            index: "04",
-
-            category: "Import",
-
-            title: "Restore",
-
-            description: "Return to your world.",
-
-            className: "panel-import",
-
-            enabled: false
-
-        },
-
-        {
-
-            id: "settings",
-
-            index: "05",
-
-            category: "Configure",
-
-            title: "Settings",
-
-            description: "Make it your own.",
-
-            className: "panel-settings",
-
-            enabled: false
-
-        }
-
-    ];
-
-
-    /* 04 — DATA UTILITIES */
-
-    Aether.utils = {
-
-        id() {
-
-            if (
-                window.crypto &&
-                typeof crypto.randomUUID === "function"
-            ) {
-
-                return crypto.randomUUID();
-
-            }
-
-            return (
-                Date.now().toString(36) +
-                "-" +
-                Math.random().toString(36).slice(2)
-            );
-
-        },
-
-        now() {
-
-            return new Date().toISOString();
-
-        },
-
-        clone(value) {
-
-            return JSON.parse(
-                JSON.stringify(value)
-            );
-
-        }
-
-    };
-
-
-    /* 05 — EXTENSIBLE DATABASE */
-
-    Aether.data = {
-
-        registerExtension(name, factory) {
-
-            if (
-                typeof name !== "string" ||
-                typeof factory !== "function"
-            ) {
-
-                throw new Error(
-                    "Invalid data extension."
-                );
-
-            }
-
-            extensions.set(name, factory);
-
-        },
-
-        create() {
-
-            const database = {
-
-                format: "aether-world",
-
-                schemaVersion:
-                    Aether.config.schemaVersion,
-
-                appVersion:
-                    Aether.config.version,
-
-                metadata: {
-
-                    id: Aether.utils.id(),
-
-                    name: "Untitled World",
-
-                    createdAt: Aether.utils.now(),
-
-                    updatedAt: Aether.utils.now()
-
-                },
-
-                modules: {}
-
-            };
-
-            for (
-                const [name, factory]
-                of extensions
-            ) {
-
-                database.modules[name] = factory();
-
-            }
-
-            return database;
-
-        },
-
-        registerMigration(version, migrate) {
-
-            if (
-                !Number.isInteger(version) ||
-                typeof migrate !== "function"
-            ) {
-
-                throw new Error(
-                    "Invalid migration."
-                );
-
-            }
-
-            migrations.set(version, migrate);
-
-        },
-
-        normalize(input) {
-
-            if (
-                !input ||
-                typeof input !== "object" ||
-                input.format !== "aether-world"
-            ) {
-
-                throw new Error(
-                    "Unrecognized Aether database."
-                );
-
-            }
-
-            let database =
-                Aether.utils.clone(input);
-
-            if (
-                !Number.isInteger(
-                    database.schemaVersion
-                ) ||
-                database.schemaVersion < 1
-            ) {
-
-                throw new Error(
-                    "Invalid schema version."
-                );
-
-            }
-
-            if (
-                database.schemaVersion >
-                Aether.config.schemaVersion
-            ) {
-
-                throw new Error(
-                    "This database requires a newer version."
-                );
-
-            }
-
-            while (
-                database.schemaVersion <
-                Aether.config.schemaVersion
-            ) {
-
-                const currentVersion =
-                    database.schemaVersion;
-
-                const migrate =
-                    migrations.get(currentVersion);
-
-                if (!migrate) {
-
-                    throw new Error(
-                        "Missing database migration."
-                    );
-
-                }
-
-                database = migrate(database);
-
-                database.schemaVersion =
-                    currentVersion + 1;
-
-            }
-
-            if (
-                !database.modules ||
-                typeof database.modules !== "object" ||
-                Array.isArray(database.modules)
-            ) {
-
-                throw new Error(
-                    "Invalid database modules."
-                );
-
-            }
-
-            for (
-                const [name, factory]
-                of extensions
-            ) {
-
-                if (
-                    !Object.prototype.hasOwnProperty.call(
-                        database.modules,
-                        name
-                    )
-                ) {
-
-                    database.modules[name] = factory();
-
-                }
-
-            }
-
-            return database;
-
-        }
-
-    };
-
-
-})();
-
-
-/* ==================================================
-   FUTURE DATA MODULES
-
-   Append data extensions and migrations here.
-
-   Example:
-
-   Aether.data.registerExtension(
-       "archive",
-       () => ({
-           categories: [],
-           articles: []
-       })
-   );
-
-   ================================================== */
-
-
-/* ==================================================
-   V1.2 — DATABASE PERSISTENCE
-   ================================================== */
-
-(() => {
-
-    "use strict";
-
-    const A = window.Aether;
-
-
-    /* 01 — VERSION */
-
-    A.config.version = "1.2";
-
-    /*
-       Schema remains at version 1.
-
-       Adding import/export does not change
-       the existing database structure.
-    */
-
-
-    /* 02 — STORAGE CONFIGURATION */
-
-    const STORAGE_KEY =
-        A.config.storageKey;
-
-    const RECOVERY_KEY =
-        STORAGE_KEY + "-recovery";
-
-
-    /* 03 — DATABASE VALIDATION */
-
-    A.data.validate = function (database) {
-
-        if (
-            !database ||
-            typeof database !== "object" ||
-            Array.isArray(database)
-        ) {
-
-            throw new Error(
-                "The database is invalid."
-            );
-
-        }
-
-        if (
-            database.format !== "aether-world"
-        ) {
-
-            throw new Error(
-                "This is not an Aether database."
-            );
-
-        }
-
-        if (
-            !Number.isInteger(
-                database.schemaVersion
-            ) ||
-            database.schemaVersion < 1
-        ) {
-
-            throw new Error(
-                "Invalid database schema."
-            );
-
-        }
-
-        if (
-            !database.metadata ||
-            typeof database.metadata !== "object" ||
-            Array.isArray(database.metadata)
-        ) {
-
-            throw new Error(
-                "Database metadata is missing."
-            );
-
-        }
-
-        if (
-            typeof database.metadata.id !== "string" ||
-            !database.metadata.id.trim()
-        ) {
-
-            throw new Error(
-                "The world identifier is missing."
-            );
-
-        }
-
-        if (
-            typeof database.metadata.name !== "string"
-        ) {
-
-            throw new Error(
-                "The world name is invalid."
-            );
-
-        }
-
-        if (
-            !database.modules ||
-            typeof database.modules !== "object" ||
-            Array.isArray(database.modules)
-        ) {
-
-            throw new Error(
-                "Database modules are invalid."
-            );
-
-        }
-
-        return true;
-
-    };
-
-
-    /* 04 — MODULE VALIDATORS */
-
-    const moduleValidators = new Map();
-
-    A.data.registerValidator = function (
-        name,
-        validator
-    ) {
-
-        if (
-            typeof name !== "string" ||
-            typeof validator !== "function"
-        ) {
-
-            throw new Error(
-                "Invalid module validator."
-            );
-
-        }
-
-        moduleValidators.set(
-            name,
-            validator
-        );
-
-    };
-
-
-    A.data.validateModules = function (database) {
-
-        for (
-            const [name, validator]
-            of moduleValidators
-        ) {
-
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    database.modules,
-                    name
-                )
-            ) {
-
-                const valid = validator(
-                    database.modules[name],
-                    database
-                );
-
-                if (valid === false) {
-
-                    throw new Error(
-                        "Invalid module: " + name
-                    );
-
-                }
-
-            }
-
-        }
-
-        return true;
-
-    };
-
-
-    /* 05 — DATABASE PREPARATION */
-
-    A.data.prepare = function (input) {
-
-        const database =
-            A.data.normalize(input);
-
-        A.data.validate(database);
-
-        A.data.validateModules(database);
-
-        return database;
-
-    };
-
-
-    /* 06 — LOCAL STORAGE */
-
-    A.storage = {
-
-
-        /* CHECK EXISTING DATABASE */
-
-        exists() {
-
-            return localStorage.getItem(
-                STORAGE_KEY
-            ) !== null;
-
-        },
-
-
-        /* LOAD DATABASE */
-
-        load() {
-
-            const raw = localStorage.getItem(
-                STORAGE_KEY
-            );
-
-            if (raw === null) {
-
-                return null;
-
-            }
-
-            let parsed;
-
-            try {
-
-                parsed = JSON.parse(raw);
-
-            } catch {
-
-                throw new Error(
-                    "The locally saved database could not be read."
-                );
-
-            }
-
-            return A.data.prepare(parsed);
-
-        },
-
-
-        /* SAVE DATABASE */
-
-        save(database) {
-
-            const prepared =
-                A.data.prepare(database);
-
-            prepared.appVersion =
-                A.config.version;
-
-            prepared.metadata.updatedAt =
-                A.utils.now();
-
-            const serialized =
-                JSON.stringify(prepared);
-
-            /*
-               setItem either succeeds or throws.
-               The in-memory database is not replaced
-               until this operation succeeds.
-            */
-
-            localStorage.setItem(
-                STORAGE_KEY,
-                serialized
-            );
-
-            return prepared;
-
-        },
-
-
-        /* CREATE RECOVERY COPY */
-
-        createRecovery(database) {
-
-            if (!database) return false;
-
-            const serialized =
-                JSON.stringify(database);
-
-            localStorage.setItem(
-                RECOVERY_KEY,
-                serialized
-            );
-
-            return true;
-
-        },
-
-
-        /* READ RECOVERY COPY */
-
-        loadRecovery() {
-
-            const raw = localStorage.getItem(
-                RECOVERY_KEY
-            );
-
-            if (raw === null) {
-
-                return null;
-
-            }
-
-            return A.data.prepare(
-                JSON.parse(raw)
-            );
-
-        },
-
-
-        /* CHECK RECOVERY AVAILABILITY */
-
-        hasRecovery() {
-
-            return localStorage.getItem(
-                RECOVERY_KEY
-            ) !== null;
-
-        }
-
-    };
-
-
-    /* 07 — EXPORT FORMAT */
-
-    A.data.serialize = function (database) {
-
-        const prepared =
-            A.data.prepare(database);
-
-        prepared.appVersion =
-            A.config.version;
-
-        prepared.exportedAt =
-            A.utils.now();
-
-        return JSON.stringify(
-            prepared,
-            null,
-            2
-        );
-
-    };
-
-
-    /* 08 — IMPORT FORMAT */
-
-    A.data.deserialize = function (text) {
-
-        if (
-            typeof text !== "string" ||
-            !text.trim()
-        ) {
-
-            throw new Error(
-                "The selected file is empty."
-            );
-
-        }
-
-        let parsed;
-
-        try {
-
-            /*
-               Remove optional UTF-8 BOM.
-            */
-
-            parsed = JSON.parse(
-                text.replace(/^\uFEFF/, "")
-            );
-
-        } catch {
-
-            throw new Error(
-                "The selected file is not valid JSON."
-            );
-
-        }
-
-        return A.data.prepare(parsed);
-
-    };
-
-
-    /* 09 — BACKUP FILE NAME */
-
-    A.data.backupFilename = function (database) {
-
-        const worldName = (
-
-            database.metadata.name ||
-            "Untitled World"
-
-        )
-
-        .trim()
-
-        .replace(
-            /[<>:"/\\|?*\u0000-\u001F]/g,
-            "-"
-        )
-
-        .replace(/\s+/g, "-")
-
-        .slice(0, 70)
-
-        || "Untitled-World";
-
-
-        const now = new Date();
-
-        const date = [
-
-            now.getFullYear(),
-
-            String(
-                now.getMonth() + 1
-            ).padStart(2, "0"),
-
-            String(
-                now.getDate()
-            ).padStart(2, "0")
-
-        ].join("-");
-
-
-        const time = [
-
-            String(
-                now.getHours()
-            ).padStart(2, "0"),
-
-            String(
-                now.getMinutes()
-            ).padStart(2, "0"),
-
-            String(
-                now.getSeconds()
-            ).padStart(2, "0")
-
-        ].join("-");
-
-
-        return (
-
-            "Aether-" +
-
-            worldName +
-
-            "-" +
-
-            date +
-
-            "_" +
-
-            time +
-
-            ".json"
-
-        );
-
-    };
-
-
-})();
-
-
-/* ==================================================
-   END V1.2 — DATABASE PERSISTENCE
-
-   Future data modules can be appended below.
-   ================================================== */
-
-
-/* ==================================================
-   V2.0 — WORLD ARCHIVE DATA MODULE
-   ================================================== */
-
-(() => {
-
-    "use strict";
-
-    const A = window.Aether;
-
-    A.config.version = "2.0";
+    const migrations = new Map();
+    const validators = new Map();
+    const normalizers = new Map();
+
+    const archiveMigrations = new Map();
 
     const MODULE = "archive";
 
@@ -917,161 +27,740 @@
         "divider"
     ];
 
+    const SORT_TYPES = [
+        "alphabetical",
+        "created",
+        "edited"
+    ];
+
+    const blockTypeSet = new Set(BLOCK_TYPES);
+    const sortTypeSet = new Set(SORT_TYPES);
+
+    const collator = new Intl.Collator(undefined, {
+        sensitivity: "base",
+        numeric: true
+    });
+
 
     /* ==================================================
-       01 — UTILITIES
+       01 — APPLICATION CONFIGURATION
        ================================================== */
 
-    const now = () => new Date().toISOString();
+    A.config = {
+        name: "Aether",
+        version: "2.1",
+        schemaVersion: 1,
+
+        storageKey: "aether-worldbuilding",
+
+        subtitle: "A world in the making",
+        footer: "Every world begins somewhere",
+        edition: "Vol. I"
+    };
+
+    A.palette = {
+        ink: "#0f1217",
+        ocean: "#27606c",
+        aqua: "#7baaab",
+        shell: "#c68d5d",
+        gold: "#e6bd8b",
+        ivory: "#eee5d6",
+        midnight: "#102435",
+        deepOcean: "#17434f",
+        paleAqua: "#b9d7d3"
+    };
+
+
+    /* ==================================================
+       02 — MAIN MENU
+       ================================================== */
+
+    A.menu = [
+        {
+            id: "archive",
+            index: "01",
+            category: "The Compendium",
+            title: "World",
+            italicTitle: "Archive.",
+            description:
+                "The fragments of an unwritten universe.",
+            className: "panel-hero",
+            enabled: false
+        },
+        {
+            id: "collections",
+            index: "02",
+            category: "Curate",
+            title: "Collections",
+            description: "Gather the fragments.",
+            className: "panel-collections",
+            enabled: false
+        },
+        {
+            id: "export",
+            index: "03",
+            category: "Save",
+            title: "Preserve",
+            description: "Keep what was created.",
+            className: "panel-export",
+            enabled: false
+        },
+        {
+            id: "import",
+            index: "04",
+            category: "Import",
+            title: "Restore",
+            description: "Return to your world.",
+            className: "panel-import",
+            enabled: false
+        },
+        {
+            id: "settings",
+            index: "05",
+            category: "Configure",
+            title: "Settings",
+            description: "Make it your own.",
+            className: "panel-settings",
+            enabled: false
+        }
+    ];
+
+
+    /* ==================================================
+       03 — SHARED UTILITIES
+       ================================================== */
+
+    const isObject = value =>
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value);
+
+    const has = (object, key) =>
+        Object.prototype.hasOwnProperty.call(
+            object,
+            key
+        );
+
+    const fail = message => {
+        throw new Error(message);
+    };
+
+    const now = () =>
+        new Date().toISOString();
 
     const uid = () => {
 
         if (globalThis.crypto?.randomUUID) {
-            return crypto.randomUUID();
+            return globalThis.crypto.randomUUID();
         }
 
-        return (
-            Date.now().toString(36) +
-            "-" +
-            Math.random().toString(36).slice(2) +
-            "-" +
+        return [
+            Date.now().toString(36),
+            Math.random().toString(36).slice(2),
             Math.random().toString(36).slice(2)
-        );
+        ].join("-");
 
     };
 
-    const isObject = value => (
-        value !== null &&
-        typeof value === "object" &&
-        !Array.isArray(value)
-    );
+    const clone = value =>
+        JSON.parse(JSON.stringify(value));
 
-    const validName = value => (
+    const validId = value =>
+        typeof value === "string" &&
+        value.length > 0;
+
+    const validName = value =>
         typeof value === "string" &&
         value.trim().length > 0 &&
-        value.length <= 250
-    );
+        value.length <= 250;
 
-    function cleanName(value) {
+    const validDate = value =>
+        Number.isFinite(Date.parse(value));
+
+    const cleanName = value => {
 
         const name = String(value ?? "").trim();
 
         if (!validName(name)) {
-
-            throw new Error(
+            fail(
                 "Enter a name between 1 and 250 characters."
             );
-
         }
 
         return name;
 
-    }
+    };
 
+    const alphabetical = (a, b) =>
+        collator.compare(a.name, b.name);
 
-    /* ==================================================
-       02 — MODULE DEFAULTS
-       ================================================== */
+    const pad = value =>
+        String(value).padStart(2, "0");
 
-    function createArchive() {
-
-        return {
-
-            version: 1,
-
-            categories: [],
-
-            articles: [],
-
-            preferences: {
-
-                sort: "alphabetical",
-
-                expanded: []
-
-            }
-
-        };
-
-    }
-
-
-    /* ==================================================
-       03 — MODULE MIGRATIONS
-       ================================================== */
-
-    const migrations = new Map();
-
-    function normalizeArchive(input) {
-
-        if (input === undefined) {
-
-            return createArchive();
-
-        }
-
-        if (!isObject(input)) {
-
-            throw new Error(
-                "The Archive module is invalid."
-            );
-
-        }
-
-        const archive = A.utils.clone(input);
-
-        if (archive.version === undefined) {
-            archive.version = 1;
-        }
+    function register(map, key, callback, message) {
 
         if (
-            !Number.isInteger(archive.version) ||
-            archive.version < 1 ||
-            archive.version > 1
+            typeof key !== "string" ||
+            typeof callback !== "function"
         ) {
-
-            throw new Error(
-                "Unsupported Archive version."
-            );
-
+            fail(message);
         }
 
-        while (migrations.has(archive.version)) {
+        map.set(key, callback);
 
-            const migrate =
-                migrations.get(archive.version);
+    }
 
-            const oldVersion = archive.version;
+    function swap(array, a, b) {
 
-            migrate(archive);
+        if (
+            a < 0 ||
+            b < 0 ||
+            a >= array.length ||
+            b >= array.length
+        ) {
+            return false;
+        }
 
-            if (archive.version <= oldVersion) {
+        [array[a], array[b]] = [
+            array[b],
+            array[a]
+        ];
 
-                throw new Error(
-                    "Archive migration did not advance."
+        return true;
+
+    }
+
+    A.utils = {
+        id: uid,
+        now,
+        clone
+    };
+
+
+    /* ==================================================
+       04 — DATABASE FOUNDATION
+       ================================================== */
+
+    function initializeModules(database) {
+
+        for (const [name, factory] of extensions) {
+
+            if (!has(database.modules, name)) {
+
+                Object.defineProperty(
+                    database.modules,
+                    name,
+                    {
+                        value: factory(),
+                        writable: true,
+                        enumerable: true,
+                        configurable: true
+                    }
                 );
 
             }
 
         }
 
+        for (const [name, normalize] of normalizers) {
+
+            if (has(database.modules, name)) {
+
+                database.modules[name] = normalize(
+                    database.modules[name]
+                );
+
+            }
+
+        }
+
+        return database;
+
+    }
+
+    function createDatabase() {
+
+        const timestamp = now();
+
+        return initializeModules({
+            format: "aether-world",
+
+            schemaVersion: A.config.schemaVersion,
+            appVersion: A.config.version,
+
+            metadata: {
+                id: uid(),
+                name: "Untitled World",
+                createdAt: timestamp,
+                updatedAt: timestamp
+            },
+
+            modules: {}
+        });
+
+    }
+
+    function normalizeDatabase(input) {
+
+        if (
+            !isObject(input) ||
+            input.format !== "aether-world"
+        ) {
+            fail("Unrecognized Aether database.");
+        }
+
+        if (
+            !Number.isInteger(input.schemaVersion) ||
+            input.schemaVersion < 1
+        ) {
+            fail("Invalid schema version.");
+        }
+
+        if (
+            input.schemaVersion >
+            A.config.schemaVersion
+        ) {
+            fail(
+                "This database requires a newer version."
+            );
+        }
+
+        let database = clone(input);
+
+        while (
+            database.schemaVersion <
+            A.config.schemaVersion
+        ) {
+
+            const version = database.schemaVersion;
+            const migrate = migrations.get(version);
+
+            if (!migrate) {
+                fail("Missing database migration.");
+            }
+
+            database = migrate(database);
+
+            if (!isObject(database)) {
+                fail("Invalid database migration.");
+            }
+
+            database.schemaVersion = version + 1;
+
+        }
+
+        if (!isObject(database.modules)) {
+            fail("Invalid database modules.");
+        }
+
+        return initializeModules(database);
+
+    }
+
+    function validateDatabase(database) {
+
+        if (!isObject(database)) {
+            fail("The database is invalid.");
+        }
+
+        if (database.format !== "aether-world") {
+            fail("This is not an Aether database.");
+        }
+
+        if (
+            !Number.isInteger(database.schemaVersion) ||
+            database.schemaVersion < 1
+        ) {
+            fail("Invalid database schema.");
+        }
+
+        if (!isObject(database.metadata)) {
+            fail("Database metadata is missing.");
+        }
+
+        if (
+            !validId(database.metadata.id) ||
+            !database.metadata.id.trim()
+        ) {
+            fail("The world identifier is missing.");
+        }
+
+        if (
+            typeof database.metadata.name !== "string"
+        ) {
+            fail("The world name is invalid.");
+        }
+
+        if (!isObject(database.modules)) {
+            fail("Database modules are invalid.");
+        }
+
+        return true;
+
+    }
+
+    function validateModules(database) {
+
+        for (const [name, validate] of validators) {
+
+            if (
+                has(database.modules, name) &&
+                validate(
+                    database.modules[name],
+                    database
+                ) === false
+            ) {
+                fail("Invalid module: " + name);
+            }
+
+        }
+
+        return true;
+
+    }
+
+    function prepareDatabase(input) {
+
+        const database = A.data.normalize(input);
+
+        A.data.validate(database);
+        A.data.validateModules(database);
+
+        return database;
+
+    }
+
+
+    /* ==================================================
+       05 — PUBLIC DATABASE API
+       ================================================== */
+
+    A.data = {
+
+        create: createDatabase,
+
+        normalize: normalizeDatabase,
+
+        validate: validateDatabase,
+
+        validateModules,
+
+        prepare: prepareDatabase,
+
+        registerExtension(name, factory) {
+
+            register(
+                extensions,
+                name,
+                factory,
+                "Invalid data extension."
+            );
+
+        },
+
+        registerValidator(name, validator) {
+
+            register(
+                validators,
+                name,
+                validator,
+                "Invalid module validator."
+            );
+
+        },
+
+        registerNormalizer(name, normalizer) {
+
+            register(
+                normalizers,
+                name,
+                normalizer,
+                "Invalid module normalizer."
+            );
+
+        },
+
+        registerMigration(version, migrate) {
+
+            if (
+                !Number.isInteger(version) ||
+                typeof migrate !== "function"
+            ) {
+                fail("Invalid migration.");
+            }
+
+            migrations.set(version, migrate);
+
+        },
+
+
+        /* JSON EXPORT */
+
+        serialize(database) {
+
+            const prepared = A.data.prepare(database);
+
+            prepared.appVersion = A.config.version;
+            prepared.exportedAt = now();
+
+            return JSON.stringify(
+                prepared,
+                null,
+                2
+            );
+
+        },
+
+
+        /* JSON IMPORT */
+
+        deserialize(text) {
+
+            if (
+                typeof text !== "string" ||
+                !text.trim()
+            ) {
+                fail("The selected file is empty.");
+            }
+
+            let parsed;
+
+            try {
+
+                parsed = JSON.parse(
+                    text.replace(/^\uFEFF/, "")
+                );
+
+            } catch {
+
+                fail(
+                    "The selected file is not valid JSON."
+                );
+
+            }
+
+            return A.data.prepare(parsed);
+
+        },
+
+
+        /* BACKUP FILE NAME */
+
+        backupFilename(database) {
+
+            const name = (
+                database.metadata.name ||
+                "Untitled World"
+            )
+                .trim()
+                .replace(
+                    /[<>:"/\\|?*\u0000-\u001F]/g,
+                    "-"
+                )
+                .replace(/\s+/g, "-")
+                .slice(0, 70)
+                || "Untitled-World";
+
+            const date = new Date();
+
+            const day = [
+                date.getFullYear(),
+                pad(date.getMonth() + 1),
+                pad(date.getDate())
+            ].join("-");
+
+            const time = [
+                pad(date.getHours()),
+                pad(date.getMinutes()),
+                pad(date.getSeconds())
+            ].join("-");
+
+            return `Aether-${name}-${day}_${time}.json`;
+
+        }
+
+    };
+
+
+    /* ==================================================
+       06 — DATABASE PERSISTENCE
+       ================================================== */
+
+    const STORAGE_KEY = A.config.storageKey;
+
+    const RECOVERY_KEY =
+        STORAGE_KEY + "-recovery";
+
+    const exists = key =>
+        localStorage.getItem(key) !== null;
+
+    function loadDatabase(key, errorMessage) {
+
+        const raw = localStorage.getItem(key);
+
+        if (raw === null) {
+            return null;
+        }
+
+        let parsed;
+
+        try {
+
+            parsed = JSON.parse(raw);
+
+        } catch {
+
+            fail(errorMessage);
+
+        }
+
+        return A.data.prepare(parsed);
+
+    }
+
+    A.storage = {
+
+        exists() {
+            return exists(STORAGE_KEY);
+        },
+
+        load() {
+
+            return loadDatabase(
+                STORAGE_KEY,
+                "The locally saved database could not be read."
+            );
+
+        },
+
+        save(database) {
+
+            const prepared = A.data.prepare(database);
+
+            prepared.appVersion = A.config.version;
+            prepared.metadata.updatedAt = now();
+
+            /*
+               Persistence remains transactional.
+
+               The application receives the replacement
+               database only after localStorage succeeds.
+            */
+
+            localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(prepared)
+            );
+
+            return prepared;
+
+        },
+
+        createRecovery(database) {
+
+            if (!database) {
+                return false;
+            }
+
+            localStorage.setItem(
+                RECOVERY_KEY,
+                JSON.stringify(database)
+            );
+
+            return true;
+
+        },
+
+        loadRecovery() {
+
+            return loadDatabase(
+                RECOVERY_KEY,
+                "The recovery database could not be read."
+            );
+
+        },
+
+        hasRecovery() {
+            return exists(RECOVERY_KEY);
+        }
+
+    };
+
+
+    /* ==================================================
+       07 — ARCHIVE DEFAULTS
+       ================================================== */
+
+    function createArchive() {
+
+        return {
+            version: 1,
+
+            categories: [],
+            articles: [],
+
+            preferences: {
+                sort: "alphabetical",
+                expanded: []
+            }
+        };
+
+    }
+
+    function normalizeArchive(archive) {
+
+        if (archive === undefined) {
+            return createArchive();
+        }
+
+        if (!isObject(archive)) {
+            fail("The Archive module is invalid.");
+        }
+
+        /*
+           The complete database has already been cloned.
+
+           No additional Archive clone is necessary.
+        */
+
+        archive.version ??= 1;
+
+        if (
+            !Number.isInteger(archive.version) ||
+            archive.version < 1 ||
+            archive.version > 1
+        ) {
+            fail("Unsupported Archive version.");
+        }
+
+        while (
+            archiveMigrations.has(archive.version)
+        ) {
+
+            const version = archive.version;
+
+            archiveMigrations.get(version)(archive);
+
+            if (
+                !Number.isInteger(archive.version) ||
+                archive.version <= version
+            ) {
+                fail(
+                    "Archive migration did not advance."
+                );
+            }
+
+        }
+
         if (archive.preferences === undefined) {
-
             archive.preferences = {};
-
         }
 
         if (!isObject(archive.preferences)) {
-
-            throw new Error(
-                "Invalid Archive preferences."
-            );
-
+            fail("Invalid Archive preferences.");
         }
 
-        archive.preferences.sort ??=
-            "alphabetical";
-
+        archive.preferences.sort ??= "alphabetical";
         archive.preferences.expanded ??= [];
 
         return archive;
@@ -1080,8 +769,154 @@
 
 
     /* ==================================================
-       04 — DATA VALIDATION
+       08 — ARCHIVE INDEXING
        ================================================== */
+
+    /*
+       Indexes are generated from the current data.
+
+       They are not stored in JSON backups and cannot
+       become stale across database replacements.
+    */
+
+    function indexById(items) {
+
+        return new Map(
+            items.map(item => [item.id, item])
+        );
+
+    }
+
+    function groupBy(items, key) {
+
+        const groups = new Map();
+
+        for (const item of items) {
+
+            const value = item[key];
+
+            let group = groups.get(value);
+
+            if (!group) {
+
+                group = [];
+
+                groups.set(value, group);
+
+            }
+
+            group.push(item);
+
+        }
+
+        return groups;
+
+    }
+
+    function createArchiveIndex(archive) {
+
+        return {
+            categories: indexById(
+                archive.categories
+            ),
+
+            articles: indexById(
+                archive.articles
+            ),
+
+            children: groupBy(
+                archive.categories,
+                "parentId"
+            ),
+
+            articlesByCategory: groupBy(
+                archive.articles,
+                "categoryId"
+            ),
+
+            expanded: new Set(
+                archive.preferences.expanded
+            )
+        };
+
+    }
+
+
+    /* ==================================================
+       09 — ARCHIVE VALIDATION
+       ================================================== */
+
+    function validateCategoryHierarchy(categoryMap) {
+
+        /*
+           Each category is resolved once.
+
+           Shared ancestor chains are not repeatedly
+           traversed for every individual category.
+        */
+
+        const resolved = new Set();
+
+        for (const category of categoryMap.values()) {
+
+            if (resolved.has(category.id)) {
+                continue;
+            }
+
+            const visited = new Set();
+
+            let current = category.id;
+
+            while (
+                current !== null &&
+                !resolved.has(current)
+            ) {
+
+                if (
+                    visited.has(current) ||
+                    !categoryMap.has(current)
+                ) {
+                    fail("Invalid category hierarchy.");
+                }
+
+                visited.add(current);
+
+                current = categoryMap.get(
+                    current
+                ).parentId;
+
+            }
+
+            for (const id of visited) {
+                resolved.add(id);
+            }
+
+        }
+
+    }
+
+    function validateBlocks(blocks) {
+
+        const ids = new Set();
+
+        for (const block of blocks) {
+
+            if (
+                !isObject(block) ||
+                !validId(block.id) ||
+                ids.has(block.id) ||
+                !blockTypeSet.has(block.type) ||
+                typeof block.text !== "string" ||
+                typeof block.label !== "string"
+            ) {
+                fail("Invalid article content block.");
+            }
+
+            ids.add(block.id);
+
+        }
+
+    }
 
     function validateArchive(archive) {
 
@@ -1091,12 +926,11 @@
             !Array.isArray(archive.categories) ||
             !Array.isArray(archive.articles)
         ) {
-
-            throw new Error(
-                "Invalid Archive structure."
-            );
-
+            fail("Invalid Archive structure.");
         }
+
+
+        /* Categories */
 
         const categoryMap = new Map();
 
@@ -1104,8 +938,7 @@
 
             if (
                 !isObject(category) ||
-                typeof category.id !== "string" ||
-                !category.id ||
+                !validId(category.id) ||
                 categoryMap.has(category.id) ||
                 !validName(category.name) ||
                 (
@@ -1113,11 +946,7 @@
                     typeof category.parentId !== "string"
                 )
             ) {
-
-                throw new Error(
-                    "Invalid or duplicate category."
-                );
-
+                fail("Invalid or duplicate category.");
             }
 
             categoryMap.set(
@@ -1127,41 +956,10 @@
 
         }
 
-
-        /* VERIFY CATEGORY HIERARCHY */
-
-        for (const category of archive.categories) {
-
-            const visited = new Set([
-                category.id
-            ]);
-
-            let parentId = category.parentId;
-
-            while (parentId !== null) {
-
-                if (
-                    visited.has(parentId) ||
-                    !categoryMap.has(parentId)
-                ) {
-
-                    throw new Error(
-                        "Invalid category hierarchy."
-                    );
-
-                }
-
-                visited.add(parentId);
-
-                parentId =
-                    categoryMap.get(parentId).parentId;
-
-            }
-
-        }
+        validateCategoryHierarchy(categoryMap);
 
 
-        /* VERIFY ARTICLES */
+        /* Articles */
 
         const articleIds = new Set();
 
@@ -1169,77 +967,38 @@
 
             if (
                 !isObject(article) ||
-                typeof article.id !== "string" ||
-                !article.id ||
+                !validId(article.id) ||
                 articleIds.has(article.id) ||
                 !categoryMap.has(article.categoryId) ||
                 !validName(article.name) ||
                 typeof article.subtitle !== "string" ||
                 !Array.isArray(article.blocks) ||
-                !Number.isFinite(
-                    Date.parse(article.createdAt)
-                ) ||
-                !Number.isFinite(
-                    Date.parse(article.updatedAt)
-                )
+                !validDate(article.createdAt) ||
+                !validDate(article.updatedAt)
             ) {
-
-                throw new Error(
-                    "Invalid or duplicate article."
-                );
-
+                fail("Invalid or duplicate article.");
             }
 
             articleIds.add(article.id);
 
-            const blockIds = new Set();
-
-            for (const block of article.blocks) {
-
-                if (
-                    !isObject(block) ||
-                    typeof block.id !== "string" ||
-                    !block.id ||
-                    blockIds.has(block.id) ||
-                    !BLOCK_TYPES.includes(block.type) ||
-                    typeof block.text !== "string" ||
-                    typeof block.label !== "string"
-                ) {
-
-                    throw new Error(
-                        "Invalid article content block."
-                    );
-
-                }
-
-                blockIds.add(block.id);
-
-            }
+            validateBlocks(article.blocks);
 
         }
 
 
-        /* VERIFY PREFERENCES */
+        /* Preferences */
+
+        const preferences = archive.preferences;
 
         if (
-            !isObject(archive.preferences) ||
-            ![
-                "alphabetical",
-                "created",
-                "edited"
-            ].includes(archive.preferences.sort) ||
-            !Array.isArray(
-                archive.preferences.expanded
-            ) ||
-            !archive.preferences.expanded.every(
+            !isObject(preferences) ||
+            !sortTypeSet.has(preferences.sort) ||
+            !Array.isArray(preferences.expanded) ||
+            !preferences.expanded.every(
                 id => typeof id === "string"
             )
         ) {
-
-            throw new Error(
-                "Invalid Archive preferences."
-            );
-
+            fail("Invalid Archive preferences.");
         }
 
         return true;
@@ -1248,44 +1007,18 @@
 
 
     /* ==================================================
-       05 — INTEGRATE WITH EXISTING DATABASE
+       10 — REGISTER ARCHIVE MODULE
        ================================================== */
 
-    const originalNormalize =
-        A.data.normalize.bind(A.data);
+    A.data.registerExtension(
+        MODULE,
+        createArchive
+    );
 
-    A.data.normalize = function (input) {
-
-        const database =
-            originalNormalize(input);
-
-        database.modules[MODULE] =
-            normalizeArchive(
-                database.modules[MODULE]
-            );
-
-        return database;
-
-    };
-
-
-    const originalCreate =
-        A.data.create.bind(A.data);
-
-    A.data.create = function (...args) {
-
-        const database =
-            originalCreate(...args);
-
-        database.modules[MODULE] =
-            normalizeArchive(
-                database.modules[MODULE]
-            );
-
-        return database;
-
-    };
-
+    A.data.registerNormalizer(
+        MODULE,
+        normalizeArchive
+    );
 
     A.data.registerValidator(
         MODULE,
@@ -1294,75 +1027,103 @@
 
 
     /* ==================================================
-       06 — ARCHIVE DATA ACCESS
+       11 — ARCHIVE DATA ACCESS
        ================================================== */
 
-    const read = () => A.app.getModule(MODULE);
+    const read = () =>
+        A.app.getModule(MODULE);
 
-    const change = updater => (
-        A.app.updateModule(
-            MODULE,
-            updater
-        )
-    );
+    const change = updater =>
+        A.app.updateModule(MODULE, updater);
 
-    function requireCategory(archive, id) {
+    function requireItem(items, id, message) {
 
-        const category =
-            archive.categories.find(
-                item => item.id === id
-            );
+        const item = items.find(
+            entry => entry.id === id
+        );
 
-        if (!category) {
-
-            throw new Error(
-                "Category not found."
-            );
-
+        if (!item) {
+            fail(message);
         }
 
-        return category;
+        return item;
 
     }
 
-    function requireArticle(archive, id) {
+    const requireCategory = (archive, id) =>
+        requireItem(
+            archive.categories,
+            id,
+            "Category not found."
+        );
 
-        const article =
-            archive.articles.find(
-                item => item.id === id
-            );
+    const requireArticle = (archive, id) =>
+        requireItem(
+            archive.articles,
+            id,
+            "Article not found."
+        );
 
-        if (!article) {
+    const requireBlock = (article, id) =>
+        requireItem(
+            article.blocks,
+            id,
+            "Content block not found."
+        );
 
-            throw new Error(
-                "Article not found."
-            );
+    const touch = item => {
+        item.updatedAt = now();
+    };
 
+    function expandCategory(archive, id) {
+
+        if (
+            id !== null &&
+            !archive.preferences.expanded.includes(id)
+        ) {
+            archive.preferences.expanded.push(id);
         }
-
-        return article;
 
     }
 
 
-    /* FIND ALL DESCENDANTS */
+    /* DESCENDANT TRAVERSAL */
 
     function descendants(archive, id) {
+
+        const children = groupBy(
+            archive.categories,
+            "parentId"
+        );
 
         const result = new Set([id]);
 
         const queue = [id];
 
-        while (queue.length) {
+        /*
+           An index replaces Array.shift().
 
-            const parentId = queue.shift();
+           Categories are grouped once instead of
+           rescanning the entire array for every parent.
+        */
 
-            for (const category of archive.categories) {
+        for (
+            let cursor = 0;
+            cursor < queue.length;
+            cursor++
+        ) {
 
-                if (
-                    category.parentId === parentId &&
-                    !result.has(category.id)
-                ) {
+            const parent = queue[cursor];
+
+            const entries = children.get(parent);
+
+            if (!entries) {
+                continue;
+            }
+
+            for (const category of entries) {
+
+                if (!result.has(category.id)) {
 
                     result.add(category.id);
 
@@ -1379,8 +1140,33 @@
     }
 
 
+    /* SHARED ARTICLE MUTATION */
+
+    function changeArticle(id, updater) {
+
+        return change(archive => {
+
+            const article = requireArticle(
+                archive,
+                id
+            );
+
+            const result = updater(
+                article,
+                archive
+            );
+
+            if (result !== false) {
+                touch(article);
+            }
+
+        });
+
+    }
+
+
     /* ==================================================
-       07 — PUBLIC ARCHIVE API
+       12 — PUBLIC ARCHIVE API
        ================================================== */
 
     A.archive = {
@@ -1390,7 +1176,20 @@
         blockTypes: [...BLOCK_TYPES],
 
 
-        /* CATEGORY LOOKUP */
+        /* OPTIONAL INDEX ACCESS */
+
+        getIndex() {
+
+            return createArchiveIndex(
+                read()
+            );
+
+        },
+
+
+        /* ----------------------------------------------
+           CATEGORY LOOKUP
+           ---------------------------------------------- */
 
         getCategory(id) {
 
@@ -1399,7 +1198,6 @@
             ) || null;
 
         },
-
 
         getChildren(parentId = null) {
 
@@ -1410,27 +1208,25 @@
 
         },
 
-
         getPath(id) {
 
-            const archive = read();
-
-            const map = new Map(
-                archive.categories.map(
-                    category => [
-                        category.id,
-                        category
-                    ]
-                )
+            const map = indexById(
+                read().categories
             );
 
             const path = [];
+            const visited = new Set();
 
             let current = map.get(id);
 
-            while (current) {
+            while (
+                current &&
+                !visited.has(current.id)
+            ) {
 
-                path.unshift(current);
+                visited.add(current.id);
+
+                path.push(current);
 
                 current = map.get(
                     current.parentId
@@ -1438,10 +1234,9 @@
 
             }
 
-            return path;
+            return path.reverse();
 
         },
-
 
         getDescendants(id) {
 
@@ -1453,22 +1248,20 @@
         },
 
 
-        /* CREATE CATEGORY */
+        /* ----------------------------------------------
+           CREATE CATEGORY
+           ---------------------------------------------- */
 
         createCategory(name, parentId = null) {
 
+            const timestamp = now();
+
             const category = {
-
                 id: uid(),
-
                 name: cleanName(name),
-
                 parentId,
-
-                createdAt: now(),
-
-                updatedAt: now()
-
+                createdAt: timestamp,
+                updatedAt: timestamp
             };
 
             change(archive => {
@@ -1484,16 +1277,10 @@
 
                 archive.categories.push(category);
 
-                if (
-                    parentId !== null &&
-                    !archive.preferences.expanded
-                        .includes(parentId)
-                ) {
-
-                    archive.preferences.expanded
-                        .push(parentId);
-
-                }
+                expandCategory(
+                    archive,
+                    parentId
+                );
 
             });
 
@@ -1506,15 +1293,18 @@
 
         renameCategory(id, name) {
 
+            const cleaned = cleanName(name);
+
             change(archive => {
 
-                const category =
-                    requireCategory(archive, id);
+                const category = requireCategory(
+                    archive,
+                    id
+                );
 
-                category.name =
-                    cleanName(name);
+                category.name = cleaned;
 
-                category.updatedAt = now();
+                touch(category);
 
             });
 
@@ -1527,8 +1317,10 @@
 
             change(archive => {
 
-                const category =
-                    requireCategory(archive, id);
+                const category = requireCategory(
+                    archive,
+                    id
+                );
 
                 if (parentId !== null) {
 
@@ -1537,33 +1329,27 @@
                         parentId
                     );
 
-                }
-
-                const excluded =
-                    descendants(archive, id);
-
-                if (excluded.has(parentId)) {
-
-                    throw new Error(
-                        "A category cannot contain itself."
-                    );
+                    if (
+                        descendants(
+                            archive,
+                            id
+                        ).has(parentId)
+                    ) {
+                        fail(
+                            "A category cannot contain itself."
+                        );
+                    }
 
                 }
 
                 category.parentId = parentId;
 
-                category.updatedAt = now();
+                touch(category);
 
-                if (
-                    parentId !== null &&
-                    !archive.preferences.expanded
-                        .includes(parentId)
-                ) {
-
-                    archive.preferences.expanded
-                        .push(parentId);
-
-                }
+                expandCategory(
+                    archive,
+                    parentId
+                );
 
             });
 
@@ -1576,50 +1362,56 @@
 
             change(archive => {
 
-                const category =
-                    requireCategory(archive, id);
+                const category = requireCategory(
+                    archive,
+                    id
+                );
 
-                const siblings =
-                    archive.categories.filter(
-                        item =>
-                            item.parentId ===
-                            category.parentId
-                    );
+                const positions = [];
 
-                const index =
-                    siblings.findIndex(
-                        item => item.id === id
-                    );
+                for (
+                    let i = 0;
+                    i < archive.categories.length;
+                    i++
+                ) {
 
-                const target =
-                    siblings[index + direction];
+                    if (
+                        archive.categories[i].parentId ===
+                        category.parentId
+                    ) {
+                        positions.push(i);
+                    }
 
-                if (!target) return;
+                }
 
-                const a =
-                    archive.categories.indexOf(
-                        category
-                    );
+                const index = positions.findIndex(
+                    position =>
+                        archive.categories[position].id === id
+                );
 
-                const b =
-                    archive.categories.indexOf(
-                        target
-                    );
+                const target = index + direction;
 
-                [
-                    archive.categories[a],
-                    archive.categories[b]
-                ] = [
-                    archive.categories[b],
-                    archive.categories[a]
-                ];
+                if (
+                    index < 0 ||
+                    !Number.isInteger(target) ||
+                    target < 0 ||
+                    target >= positions.length
+                ) {
+                    return;
+                }
+
+                swap(
+                    archive.categories,
+                    positions[index],
+                    positions[target]
+                );
 
             });
 
         },
 
 
-        /* DELETE CATEGORY AND DESCENDANTS */
+        /* DELETE CATEGORY & DESCENDANTS */
 
         deleteCategory(id) {
 
@@ -1627,8 +1419,10 @@
 
                 requireCategory(archive, id);
 
-                const removed =
-                    descendants(archive, id);
+                const removed = descendants(
+                    archive,
+                    id
+                );
 
                 archive.categories =
                     archive.categories.filter(
@@ -1639,23 +1433,23 @@
                 archive.articles =
                     archive.articles.filter(
                         article =>
-                            !removed.has(
-                                article.categoryId
-                            )
+                            !removed.has(article.categoryId)
                     );
 
                 archive.preferences.expanded =
-                    archive.preferences.expanded
-                        .filter(
-                            item => !removed.has(item)
-                        );
+                    archive.preferences.expanded.filter(
+                        categoryId =>
+                            !removed.has(categoryId)
+                    );
 
             });
 
         },
 
 
-        /* EXPANSION PREFERENCES */
+        /* ----------------------------------------------
+           ARCHIVE PREFERENCES
+           ---------------------------------------------- */
 
         toggleExpanded(id) {
 
@@ -1668,7 +1462,7 @@
 
                     archive.preferences.expanded =
                         expanded.filter(
-                            item => item !== id
+                            entry => entry !== id
                         );
 
                 } else {
@@ -1681,19 +1475,22 @@
 
         },
 
-
         setSort(sort) {
 
+            if (!sortTypeSet.has(sort)) {
+                fail("Invalid Archive sort.");
+            }
+
             change(archive => {
-
                 archive.preferences.sort = sort;
-
             });
 
         },
 
 
-        /* ARTICLE LOOKUP */
+        /* ----------------------------------------------
+           ARTICLE LOOKUP
+           ---------------------------------------------- */
 
         getArticle(id) {
 
@@ -1703,60 +1500,70 @@
 
         },
 
-
         getArticles(
             categoryId,
-            sort = read().preferences.sort,
+            sort,
             includeDescendants = false
         ) {
 
             const archive = read();
 
-            const categories =
-                includeDescendants
-                    ? descendants(
-                        archive,
-                        categoryId
-                    )
-                    : new Set([categoryId]);
+            if (sort === undefined) {
+                sort = archive.preferences.sort;
+            }
 
-            const articles =
-                archive.articles.filter(
-                    article =>
-                        categories.has(
-                            article.categoryId
-                        )
+            let articles;
+
+            if (includeDescendants) {
+
+                const categories = descendants(
+                    archive,
+                    categoryId
                 );
 
-            const alphabetical = (a,b) => (
-                a.name.localeCompare(
-                    b.name,
-                    undefined,
-                    {
-                        sensitivity: "base",
-                        numeric: true
-                    }
-                )
-            );
+                articles = archive.articles.filter(
+                    article =>
+                        categories.has(article.categoryId)
+                );
 
-            if (sort === "created") {
+            } else {
 
-                return articles.sort(
-                    (a,b) =>
-                        Date.parse(b.createdAt) -
-                        Date.parse(a.createdAt) ||
-                        alphabetical(a,b)
+                articles = archive.articles.filter(
+                    article =>
+                        article.categoryId === categoryId
                 );
 
             }
 
-            if (sort === "edited") {
+
+            /* Date-based sorting */
+
+            if (
+                sort === "created" ||
+                sort === "edited"
+            ) {
+
+                const key = sort === "created"
+                    ? "createdAt"
+                    : "updatedAt";
+
+                /*
+                   Parse each date once, rather than
+                   repeatedly inside the sort comparator.
+                */
+
+                const dates = new Map(
+                    articles.map(article => [
+                        article.id,
+                        Date.parse(article[key])
+                    ])
+                );
 
                 return articles.sort(
-                    (a,b) =>
-                        Date.parse(b.updatedAt) -
-                        Date.parse(a.updatedAt) ||
-                        alphabetical(a,b)
+                    (a, b) =>
+                        dates.get(b.id) -
+                        dates.get(a.id) ||
+                        alphabetical(a, b)
                 );
 
             }
@@ -1766,26 +1573,25 @@
         },
 
 
-        /* CREATE ARTICLE */
+        /* ----------------------------------------------
+           CREATE ARTICLE
+           ---------------------------------------------- */
 
         createArticle(categoryId, name) {
 
+            const timestamp = now();
+
             const article = {
-
                 id: uid(),
-
                 categoryId,
 
                 name: cleanName(name),
-
                 subtitle: "",
 
-                createdAt: now(),
-
-                updatedAt: now(),
+                createdAt: timestamp,
+                updatedAt: timestamp,
 
                 blocks: []
-
             };
 
             change(archive => {
@@ -1808,43 +1614,45 @@
 
         updateArticle(id, patch) {
 
-            change(archive => {
+            changeArticle(
+                id,
+                (article, archive) => {
 
-                const article =
-                    requireArticle(archive, id);
+                    if ("name" in patch) {
 
-                if ("name" in patch) {
+                        article.name = cleanName(
+                            patch.name
+                        );
 
-                    article.name =
-                        cleanName(patch.name);
+                    }
+
+                    if ("subtitle" in patch) {
+
+                        article.subtitle = String(
+                            patch.subtitle
+                        );
+
+                    }
+
+                    if ("categoryId" in patch) {
+
+                        requireCategory(
+                            archive,
+                            patch.categoryId
+                        );
+
+                        article.categoryId =
+                            patch.categoryId;
+
+                    }
 
                 }
-
-                if ("subtitle" in patch) {
-
-                    article.subtitle =
-                        String(patch.subtitle);
-
-                }
-
-                if ("categoryId" in patch) {
-
-                    requireCategory(
-                        archive,
-                        patch.categoryId
-                    );
-
-                    article.categoryId =
-                        patch.categoryId;
-
-                }
-
-                article.updatedAt = now();
-
-            });
+            );
 
         },
 
+
+        /* DELETE ARTICLE */
 
         deleteArticle(id) {
 
@@ -1862,149 +1670,118 @@
         },
 
 
-        /* CONTENT BLOCKS */
+        /* ----------------------------------------------
+           CONTENT BLOCKS
+           ---------------------------------------------- */
 
         addBlock(articleId, type) {
 
-            if (!BLOCK_TYPES.includes(type)) {
-
-                throw new Error(
-                    "Unknown content block."
-                );
-
+            if (!blockTypeSet.has(type)) {
+                fail("Unknown content block.");
             }
 
             const block = {
-
                 id: uid(),
-
                 type,
-
                 label: "",
-
                 text: ""
-
             };
 
-            change(archive => {
-
-                const article =
-                    requireArticle(
-                        archive,
-                        articleId
-                    );
-
-                article.blocks.push(block);
-
-                article.updatedAt = now();
-
-            });
+            changeArticle(
+                articleId,
+                article => {
+                    article.blocks.push(block);
+                }
+            );
 
             return block.id;
 
         },
 
 
+        /* UPDATE CONTENT BLOCK */
+
         updateBlock(articleId, blockId, patch) {
 
-            change(archive => {
+            changeArticle(
+                articleId,
+                article => {
 
-                const article =
-                    requireArticle(
-                        archive,
-                        articleId
+                    const block = requireBlock(
+                        article,
+                        blockId
                     );
 
-                const block =
-                    article.blocks.find(
-                        item => item.id === blockId
-                    );
+                    if ("text" in patch) {
 
-                if (!block) {
+                        block.text = String(
+                            patch.text
+                        );
 
-                    throw new Error(
-                        "Content block not found."
-                    );
+                    }
 
-                }
+                    if ("label" in patch) {
 
-                if ("text" in patch) {
+                        block.label = String(
+                            patch.label
+                        );
 
-                    block.text =
-                        String(patch.text);
+                    }
 
                 }
-
-                if ("label" in patch) {
-
-                    block.label =
-                        String(patch.label);
-
-                }
-
-                article.updatedAt = now();
-
-            });
+            );
 
         },
 
+
+        /* MOVE CONTENT BLOCK */
 
         moveBlock(articleId, blockId, direction) {
 
-            change(archive => {
+            changeArticle(
+                articleId,
+                article => {
 
-                const article =
-                    requireArticle(
-                        archive,
-                        articleId
+                    const index =
+                        article.blocks.findIndex(
+                            block =>
+                                block.id === blockId
+                        );
+
+                    const target = index + direction;
+
+                    if (!Number.isInteger(target)) {
+                        return false;
+                    }
+
+                    return swap(
+                        article.blocks,
+                        index,
+                        target
                     );
 
-                const index =
-                    article.blocks.findIndex(
-                        block => block.id === blockId
-                    );
-
-                const target = index + direction;
-
-                if (
-                    index < 0 ||
-                    target < 0 ||
-                    target >= article.blocks.length
-                ) return;
-
-                [
-                    article.blocks[index],
-                    article.blocks[target]
-                ] = [
-                    article.blocks[target],
-                    article.blocks[index]
-                ];
-
-                article.updatedAt = now();
-
-            });
+                }
+            );
 
         },
 
 
+        /* DELETE CONTENT BLOCK */
+
         deleteBlock(articleId, blockId) {
 
-            change(archive => {
+            changeArticle(
+                articleId,
+                article => {
 
-                const article =
-                    requireArticle(
-                        archive,
-                        articleId
-                    );
+                    article.blocks =
+                        article.blocks.filter(
+                            block =>
+                                block.id !== blockId
+                        );
 
-                article.blocks =
-                    article.blocks.filter(
-                        block => block.id !== blockId
-                    );
-
-                article.updatedAt = now();
-
-            });
+                }
+            );
 
         }
 
@@ -2015,11 +1792,31 @@
 
 
 /* ==================================================
-   END V2.0 — WORLD ARCHIVE DATA
+   END — AETHER V2.1
 
-   Future modules may be appended below.
+   DATA FOUNDATION
 
-   Aether.archive is the public data interface.
-   All mutations use the V1.2 persistence system.
+   Future modules can be registered using:
 
-   ================================================== */
+   Aether.data.registerExtension(
+       "moduleName",
+       () => ({
+           version: 1
+       })
+   );
+
+   Aether.data.registerNormalizer(
+       "moduleName",
+       module => module
+   );
+
+   Aether.data.registerValidator(
+       "moduleName",
+       module => true
+   );
+
+   All mutations should continue to use:
+
+   Aether.app.updateModule()
+
+   ================================================== *)
