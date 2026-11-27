@@ -1,927 +1,407 @@
 
-/* =====================================================
-   COMPENDIUM — DATABASE ENGINE
-   Version 1
-   ===================================================== */
+/* ==================================================
+   AETHER
+   DATA FOUNDATION
+   V1.1
+   ================================================== */
 
-window.WorldData = (() => {
+(() => {
 
     "use strict";
 
-    const DATABASE_NAME = "compendium-worldbuilding";
-    const STORE_NAME = "archive";
-    const RECORD_KEY = "main";
-    const FORMAT = "compendium-archive";
-
-    let schemaVersion = 1;
-    let connection = null;
-    let current = null;
-    let initialized = false;
-
-    let writeQueue = Promise.resolve();
+    const Aether = window.Aether =
+        window.Aether || {};
 
     const migrations = new Map();
-    const collections = new Map();
-    const validators = new Map();
-    const listeners = new Set();
+
+    const extensions = new Map();
 
 
-    /* 01 — UTILITIES */
+    /* 01 — APPLICATION CONFIGURATION */
 
-    const clone = value =>
-        JSON.parse(JSON.stringify(value));
+    Aether.config = {
 
-    const now = () =>
-        new Date().toISOString();
+        name: "Aether",
 
-    const uid = () =>
-        globalThis.crypto?.randomUUID?.() ||
-        Date.now().toString(36) + "-" +
-        Math.random().toString(36).slice(2) + "-" +
-        Math.random().toString(36).slice(2);
+        version: "1.1",
 
-    const isObject = value =>
-        value !== null &&
-        typeof value === "object" &&
-        !Array.isArray(value);
+        schemaVersion: 1,
 
-    function fail(message) {
-        throw new Error(message);
-    }
+        storageKey: "aether-worldbuilding",
+
+        subtitle: "A world in the making",
+
+        footer: "Every world begins somewhere",
+
+        edition: "Vol. I"
+
+    };
 
 
-    /* 02 — DEFAULT ARCHIVE */
+    /* 02 — COLOUR PALETTE */
 
-    function defaults() {
-        return {
-            format: FORMAT,
-            schemaVersion,
+    Aether.palette = {
 
-            archiveId: uid(),
-            createdAt: now(),
-            updatedAt: now(),
+        ink: "#0f1217",
 
-            settings: {
-                archiveName: "Compendium.",
-                description:
-                    "A record of things yet to exist.",
-                menuImages: {}
-            },
+        ocean: "#27606c",
 
-            categories: [],
-            articles: [],
+        aqua: "#7baaab",
 
-            extensions: {}
-        };
-    }
+        shell: "#c68d5d",
+
+        gold: "#e6bd8b",
+
+        ivory: "#eee5d6",
+
+        midnight: "#102435",
+
+        deepOcean: "#17434f",
+
+        paleAqua: "#b9d7d3"
+
+    };
 
 
-    /* 03 — EXTENSION REGISTRATION */
+    /* 03 — MENU CONFIGURATION */
 
-    function registerCollection(name, factory) {
+    Aether.menu = [
 
-        if (initialized) {
-            fail("Register collections before initialization.");
+        {
+
+            id: "archive",
+
+            index: "01",
+
+            category: "The Compendium",
+
+            title: "World",
+
+            italicTitle: "Archive.",
+
+            description:
+                "The fragments of an unwritten universe.",
+
+            className: "panel-hero",
+
+            enabled: false
+
+        },
+
+        {
+
+            id: "collections",
+
+            index: "02",
+
+            category: "Curate",
+
+            title: "Collections",
+
+            description: "Gather the fragments.",
+
+            className: "panel-collections",
+
+            enabled: false
+
+        },
+
+        {
+
+            id: "export",
+
+            index: "03",
+
+            category: "Save",
+
+            title: "Preserve",
+
+            description: "Keep what was created.",
+
+            className: "panel-export",
+
+            enabled: false
+
+        },
+
+        {
+
+            id: "import",
+
+            index: "04",
+
+            category: "Import",
+
+            title: "Restore",
+
+            description: "Return to your world.",
+
+            className: "panel-import",
+
+            enabled: false
+
+        },
+
+        {
+
+            id: "settings",
+
+            index: "05",
+
+            category: "Configure",
+
+            title: "Settings",
+
+            description: "Make it your own.",
+
+            className: "panel-settings",
+
+            enabled: false
+
         }
 
-        if (
-            !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) ||
-            ["constructor", "prototype", "__proto__"]
-                .includes(name) ||
-            Object.hasOwn(defaults(), name)
-        ) {
-            fail("Invalid collection name.");
-        }
-
-        if (typeof factory !== "function") {
-            fail("Collection factory must be a function.");
-        }
-
-        collections.set(name, factory);
-    }
-
-    function registerMigration(version, migrate) {
-
-        if (initialized) {
-            fail("Register migrations before initialization.");
-        }
-
-        if (
-            !Number.isInteger(version) ||
-            version < 2 ||
-            typeof migrate !== "function"
-        ) {
-            fail("Invalid migration.");
-        }
-
-        migrations.set(version, migrate);
-
-        schemaVersion = Math.max(
-            schemaVersion,
-            version
-        );
-    }
-
-    function registerValidator(name, validator) {
-        validators.set(name, validator);
-    }
+    ];
 
 
-    /* 04 — NORMALIZATION */
+    /* 04 — DATA UTILITIES */
 
-    function normalize(source) {
+    Aether.utils = {
 
-        if (!isObject(source)) {
-            fail("Invalid archive.");
-        }
+        id() {
 
-        let data = clone(source);
+            if (
+                window.crypto &&
+                typeof crypto.randomUUID === "function"
+            ) {
 
-        /*
-           Compatibility with the earlier Worlds V1
-           backup format.
-        */
+                return crypto.randomUUID();
 
-        if (
-            data.format === "worlds-archive" &&
-            data.schemaVersion === 1
-        ) {
-            data.format = FORMAT;
-        }
+            }
 
-        if (data.format !== FORMAT) {
-            fail("Unrecognized archive format.");
-        }
-
-        if (
-            !Number.isInteger(data.schemaVersion) ||
-            data.schemaVersion < 1
-        ) {
-            fail("Invalid archive version.");
-        }
-
-        if (data.schemaVersion > schemaVersion) {
-            fail(
-                "This archive requires a newer application version."
+            return (
+                Date.now().toString(36) +
+                "-" +
+                Math.random().toString(36).slice(2)
             );
+
+        },
+
+        now() {
+
+            return new Date().toISOString();
+
+        },
+
+        clone(value) {
+
+            return JSON.parse(
+                JSON.stringify(value)
+            );
+
         }
 
-        while (data.schemaVersion < schemaVersion) {
-
-            const next = data.schemaVersion + 1;
-            const migration = migrations.get(next);
-
-            if (!migration) {
-                fail("Missing migration for version " + next);
-            }
-
-            data = migration(data) || data;
-            data.schemaVersion = next;
-        }
-
-        const base = defaults();
-
-        data = {
-            ...base,
-            ...data,
-
-            settings: {
-                ...base.settings,
-                ...(isObject(data.settings)
-                    ? data.settings
-                    : {})
-            }
-        };
-
-        if (!isObject(data.settings.menuImages)) {
-            data.settings.menuImages = {};
-        }
-
-        if (
-            typeof data.settings.archiveName !== "string" ||
-            !data.settings.archiveName.trim()
-        ) {
-            data.settings.archiveName = base.settings.archiveName;
-        }
-
-        if (!isObject(data.extensions)) {
-            data.extensions = {};
-        }
-
-        for (const [name, factory] of collections) {
-
-            if (!Object.hasOwn(data, name)) {
-                data[name] = factory();
-            }
-        }
-
-        validate(data);
-
-        return data;
-    }
+    };
 
 
-    /* 05 — VALIDATION */
+    /* 05 — EXTENSIBLE DATABASE */
 
-    function validate(data) {
+    Aether.data = {
 
-        if (
-            !Array.isArray(data.categories) ||
-            !Array.isArray(data.articles)
-        ) {
-            fail("Invalid archive collections.");
-        }
-
-        const categoryMap = new Map();
-        const articleIds = new Set();
-
-        for (const category of data.categories) {
+        registerExtension(name, factory) {
 
             if (
-                !isObject(category) ||
-                typeof category.id !== "string" ||
-                !category.id ||
-                typeof category.name !== "string" ||
-                !category.name.trim() ||
-                categoryMap.has(category.id)
+                typeof name !== "string" ||
+                typeof factory !== "function"
             ) {
-                fail("Invalid or duplicate category.");
+
+                throw new Error(
+                    "Invalid data extension."
+                );
+
             }
 
-            categoryMap.set(category.id, category);
-        }
+            extensions.set(name, factory);
 
-        for (const category of data.categories) {
+        },
 
-            const visited = new Set([category.id]);
+        create() {
 
-            let parentId = category.parentId;
+            const database = {
 
-            while (parentId !== null) {
+                format: "aether-world",
 
-                if (!categoryMap.has(parentId)) {
-                    fail("A category has a missing parent.");
-                }
+                schemaVersion:
+                    Aether.config.schemaVersion,
 
-                if (visited.has(parentId)) {
-                    fail("Circular category relationship.");
-                }
+                appVersion:
+                    Aether.config.version,
 
-                visited.add(parentId);
+                metadata: {
 
-                parentId =
-                    categoryMap.get(parentId).parentId;
+                    id: Aether.utils.id(),
+
+                    name: "Untitled World",
+
+                    createdAt: Aether.utils.now(),
+
+                    updatedAt: Aether.utils.now()
+
+                },
+
+                modules: {}
+
+            };
+
+            for (
+                const [name, factory]
+                of extensions
+            ) {
+
+                database.modules[name] = factory();
+
             }
-        }
 
-        for (const article of data.articles) {
+            return database;
+
+        },
+
+        registerMigration(version, migrate) {
 
             if (
-                !isObject(article) ||
-                typeof article.id !== "string" ||
-                !article.id ||
-                typeof article.title !== "string" ||
-                !article.title.trim() ||
-                articleIds.has(article.id) ||
-                !categoryMap.has(article.categoryId) ||
-                !Array.isArray(article.blocks)
+                !Number.isInteger(version) ||
+                typeof migrate !== "function"
             ) {
-                fail("Invalid or duplicate article.");
+
+                throw new Error(
+                    "Invalid migration."
+                );
+
             }
 
-            articleIds.add(article.id);
+            migrations.set(version, migrate);
 
-            const blockIds = new Set();
+        },
 
-            for (const block of article.blocks) {
+        normalize(input) {
+
+            if (
+                !input ||
+                typeof input !== "object" ||
+                input.format !== "aether-world"
+            ) {
+
+                throw new Error(
+                    "Unrecognized Aether database."
+                );
+
+            }
+
+            let database =
+                Aether.utils.clone(input);
+
+            if (
+                !Number.isInteger(
+                    database.schemaVersion
+                ) ||
+                database.schemaVersion < 1
+            ) {
+
+                throw new Error(
+                    "Invalid schema version."
+                );
+
+            }
+
+            if (
+                database.schemaVersion >
+                Aether.config.schemaVersion
+            ) {
+
+                throw new Error(
+                    "This database requires a newer version."
+                );
+
+            }
+
+            while (
+                database.schemaVersion <
+                Aether.config.schemaVersion
+            ) {
+
+                const currentVersion =
+                    database.schemaVersion;
+
+                const migrate =
+                    migrations.get(currentVersion);
+
+                if (!migrate) {
+
+                    throw new Error(
+                        "Missing database migration."
+                    );
+
+                }
+
+                database = migrate(database);
+
+                database.schemaVersion =
+                    currentVersion + 1;
+
+            }
+
+            if (
+                !database.modules ||
+                typeof database.modules !== "object" ||
+                Array.isArray(database.modules)
+            ) {
+
+                throw new Error(
+                    "Invalid database modules."
+                );
+
+            }
+
+            for (
+                const [name, factory]
+                of extensions
+            ) {
 
                 if (
-                    !isObject(block) ||
-                    typeof block.id !== "string" ||
-                    typeof block.type !== "string" ||
-                    blockIds.has(block.id)
+                    !Object.prototype.hasOwnProperty.call(
+                        database.modules,
+                        name
+                    )
                 ) {
-                    fail("Invalid content block.");
+
+                    database.modules[name] = factory();
+
                 }
 
-                blockIds.add(block.id);
-            }
-        }
-
-        for (const validator of validators.values()) {
-            validator(data);
-        }
-
-        return true;
-    }
-
-
-    /* 06 — INDEXEDDB CONNECTION */
-
-    function openDatabase() {
-
-        return new Promise((resolve, reject) => {
-
-            if (!window.indexedDB) {
-                reject(new Error(
-                    "IndexedDB is unavailable in this browser."
-                ));
-                return;
             }
 
-            const request = indexedDB.open(
-                DATABASE_NAME,
-                1
-            );
+            return database;
 
-            request.onupgradeneeded = () => {
-
-                const db = request.result;
-
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    db.createObjectStore(STORE_NAME);
-                }
-            };
-
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
-
-            request.onerror = () => {
-                reject(request.error);
-            };
-
-            request.onblocked = () => {
-                reject(new Error(
-                    "Database is blocked by another open tab."
-                ));
-            };
-        });
-    }
-
-    function readRecord() {
-
-        return new Promise((resolve, reject) => {
-
-            const transaction = connection.transaction(
-                STORE_NAME,
-                "readonly"
-            );
-
-            const request = transaction
-                .objectStore(STORE_NAME)
-                .get(RECORD_KEY);
-
-            request.onsuccess = () => {
-                resolve(request.result);
-            };
-
-            request.onerror = () => {
-                reject(request.error);
-            };
-        });
-    }
-
-    function writeRecord(data) {
-
-        return new Promise((resolve, reject) => {
-
-            const transaction = connection.transaction(
-                STORE_NAME,
-                "readwrite"
-            );
-
-            transaction.objectStore(STORE_NAME)
-                .put(data, RECORD_KEY);
-
-            transaction.oncomplete = () => resolve();
-
-            transaction.onerror = () => {
-                reject(
-                    transaction.error ||
-                    new Error("Database write failed.")
-                );
-            };
-
-            transaction.onabort = () => {
-                reject(
-                    transaction.error ||
-                    new Error("Database write aborted.")
-                );
-            };
-        });
-    }
-
-
-    /* 07 — INITIALIZATION */
-
-    async function init() {
-
-        if (initialized) return get();
-
-        connection = await openDatabase();
-
-        const stored = await readRecord();
-
-        let source = stored;
-
-        /*
-           Recover the earlier Worlds localStorage archive
-           if this is the first IndexedDB initialization.
-        */
-
-        if (!source) {
-
-            try {
-                const legacy = localStorage.getItem(
-                    "worlds.personal.archive"
-                );
-
-                if (legacy) {
-                    source = JSON.parse(legacy);
-                }
-            } catch (error) {
-                throw new Error(
-                    "Earlier archive could not be read: " +
-                    error.message
-                );
-            }
         }
 
-        const candidate = normalize(
-            source || defaults()
-        );
-
-        await writeRecord(candidate);
-
-        current = candidate;
-        initialized = true;
-
-        connection.onversionchange = () => {
-            connection.close();
-        };
-
-        return get();
-    }
-
-
-    /* 08 — TRANSACTIONS */
-
-    function get() {
-
-        if (!initialized) {
-            fail("Database is not initialized.");
-        }
-
-        return clone(current);
-    }
-
-    function select(reader) {
-
-        if (!initialized) {
-            fail("Database is not initialized.");
-        }
-
-        const result = reader(current);
-
-        return result === undefined
-            ? undefined
-            : clone(result);
-    }
-
-    function enqueue(operation) {
-
-        const pending = writeQueue.then(operation);
-
-        writeQueue = pending.catch(() => {});
-
-        return pending;
-    }
-
-    async function commit(candidate) {
-
-        const data = normalize(candidate);
-
-        data.updatedAt = now();
-
-        try {
-            await writeRecord(data);
-        } catch (error) {
-            fail(
-                "Saving failed. Browser storage may be full " +
-                "or unavailable. Export a backup if possible."
-            );
-        }
-
-        current = data;
-
-        for (const listener of listeners) {
-
-            try {
-                listener();
-            } catch (error) {
-                console.error(error);
-            }
-        }
-
-        return true;
-    }
-
-    function update(mutator) {
-
-        return enqueue(async () => {
-
-            const draft = get();
-
-            const result = mutator(draft);
-
-            if (result?.then) {
-                fail("Database mutators must be synchronous.");
-            }
-
-            await commit(draft);
-
-            return result;
-        });
-    }
-
-    function subscribe(listener) {
-        listeners.add(listener);
-
-        return () => listeners.delete(listener);
-    }
-
-
-    /* 09 — CATEGORIES */
-
-    function category(id) {
-        return select(data =>
-            data.categories.find(c => c.id === id)
-        );
-    }
-
-    function categories() {
-        return select(data => data.categories);
-    }
-
-    function children(parentId = null) {
-
-        return select(data =>
-            data.categories
-                .filter(c => c.parentId === parentId)
-                .sort((a, b) =>
-                    a.name.localeCompare(b.name)
-                )
-        );
-    }
-
-    function descendants(id) {
-
-        const all = categories();
-        const result = [];
-        const queue = [id];
-
-        while (queue.length) {
-
-            const parent = queue.shift();
-
-            for (const item of all) {
-
-                if (item.parentId === parent) {
-                    result.push(item.id);
-                    queue.push(item.id);
-                }
-            }
-        }
-
-        return result;
-    }
-
-    function categoryPath(id) {
-
-        const map = new Map(
-            categories().map(c => [c.id, c])
-        );
-
-        const path = [];
-
-        let item = map.get(id);
-
-        while (item) {
-            path.unshift(item);
-            item = map.get(item.parentId);
-        }
-
-        return path;
-    }
-
-    async function createCategory(name, parentId = null) {
-
-        name = String(name).trim();
-
-        if (!name) {
-            fail("Enter a category name.");
-        }
-
-        const item = {
-            id: uid(),
-            name,
-            parentId,
-            createdAt: now(),
-            updatedAt: now()
-        };
-
-        await update(data => {
-            data.categories.push(item);
-        });
-
-        return clone(item);
-    }
-
-    function updateCategory(id, changes) {
-
-        return update(data => {
-
-            const item = data.categories.find(
-                c => c.id === id
-            );
-
-            if (!item) fail("Category not found.");
-
-            if (changes.name !== undefined) {
-                item.name = String(changes.name).trim();
-            }
-
-            if (changes.parentId !== undefined) {
-                item.parentId = changes.parentId;
-            }
-
-            item.updatedAt = now();
-        });
-    }
-
-    function deleteCategory(id) {
-
-        return update(data => {
-
-            const ids = new Set([id]);
-
-            let changed = true;
-
-            while (changed) {
-
-                changed = false;
-
-                for (const item of data.categories) {
-
-                    if (
-                        ids.has(item.parentId) &&
-                        !ids.has(item.id)
-                    ) {
-                        ids.add(item.id);
-                        changed = true;
-                    }
-                }
-            }
-
-            data.categories = data.categories.filter(
-                c => !ids.has(c.id)
-            );
-
-            data.articles = data.articles.filter(
-                a => !ids.has(a.categoryId)
-            );
-        });
-    }
-
-
-    /* 10 — ARTICLES */
-
-    function article(id) {
-
-        return select(data =>
-            data.articles.find(a => a.id === id)
-        );
-    }
-
-    function articles() {
-        return select(data => data.articles);
-    }
-
-    function listArticles(categoryId = null, nested = false) {
-
-        if (categoryId === null) {
-            return articles();
-        }
-
-        const ids = new Set([
-            categoryId,
-            ...(nested ? descendants(categoryId) : [])
-        ]);
-
-        return select(data =>
-            data.articles.filter(a =>
-                ids.has(a.categoryId)
-            )
-        );
-    }
-
-    function newArticle(categoryId, title = "") {
-
-        return {
-            id: uid(),
-            categoryId,
-            title: String(title).trim(),
-            subtitle: "",
-            banner: "",
-            blocks: [],
-            createdAt: now(),
-            updatedAt: now()
-        };
-    }
-
-    function saveArticle(article) {
-
-        const item = clone(article);
-
-        item.title = String(item.title || "").trim();
-
-        if (!item.title) {
-            fail("The article needs a title.");
-        }
-
-        return update(data => {
-
-            const index = data.articles.findIndex(
-                a => a.id === item.id
-            );
-
-            item.updatedAt = now();
-
-            if (index === -1) {
-
-                data.articles.push(item);
-
-            } else {
-
-                data.articles[index] = {
-                    ...data.articles[index],
-                    ...item
-                };
-            }
-        });
-    }
-
-    function deleteArticle(id) {
-
-        return update(data => {
-
-            data.articles = data.articles.filter(
-                a => a.id !== id
-            );
-        });
-    }
-
-
-    /* 11 — SETTINGS */
-
-    function settings() {
-        return select(data => data.settings);
-    }
-
-    function saveSettings(changes) {
-
-        const patch = clone(changes);
-
-        return update(data => {
-
-            data.settings = {
-                ...data.settings,
-                ...patch
-            };
-        });
-    }
-
-
-    /* 12 — BACKUPS */
-
-    function exportArchive() {
-
-        const backup = get();
-
-        backup.exportedAt = now();
-
-        return JSON.stringify(backup, null, 2);
-    }
-
-    function inspectBackup(text) {
-
-        let parsed;
-
-        try {
-            parsed = JSON.parse(text);
-        } catch {
-            fail("This file is not valid JSON.");
-        }
-
-        return normalize(parsed);
-    }
-
-    function importArchive(text) {
-
-        const candidate = inspectBackup(text);
-
-        return enqueue(() => commit(candidate));
-    }
-
-    async function rawRecovery() {
-
-        if (connection) {
-
-            const record = await readRecord();
-
-            if (record) {
-                return JSON.stringify(record, null, 2);
-            }
-        }
-
-        return localStorage.getItem(
-            "worlds.personal.archive"
-        );
-    }
-
-    function flush() {
-        return writeQueue;
-    }
-
-
-    /* 13 — PUBLIC DATABASE API */
-
-    return {
-        init,
-        get,
-        select,
-        update,
-        subscribe,
-        flush,
-
-        clone,
-        uid,
-        now,
-
-        registerCollection,
-        registerMigration,
-        registerValidator,
-
-        category,
-        categories,
-        children,
-        descendants,
-        categoryPath,
-
-        createCategory,
-        updateCategory,
-        deleteCategory,
-
-        article,
-        articles,
-        listArticles,
-        newArticle,
-        saveArticle,
-        deleteArticle,
-
-        settings,
-        saveSettings,
-
-        exportArchive,
-        inspectBackup,
-        importArchive,
-        rawRecovery,
-
-        get version() {
-            return schemaVersion;
-        }
     };
+
 
 })();
 
 
-/* =====================================================
-   PERMANENT EXTENSION POINT
+/* ==================================================
+   FUTURE DATA MODULES
 
-   APPEND FUTURE DATA COLLECTIONS, VALIDATORS
-   AND VERSION MIGRATIONS BELOW THIS LINE.
+   Append data extensions and migrations here.
 
    Example:
 
-   WorldData.registerCollection(
-       "relationships",
-       () => []
+   Aether.data.registerExtension(
+       "archive",
+       () => ({
+           categories: [],
+           articles: []
+       })
    );
 
-   WorldData.registerMigration(2, data => {
-       data.relationships ??= [];
-       return data;
-   });
-
-   ===================================================== */
+   ================================================== */
